@@ -14,7 +14,7 @@ router.get('/viewer/:vehicleId', async (req, res) => {
     });
 
     const imageUrls = [];
-    for (const obj of objects) {
+    for await (const obj of objects) {
       // Generate presigned URL valid for 7 days
       const url = await minioClient.presignedGetObject(
         PROCESSED_BUCKET,

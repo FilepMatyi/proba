@@ -6,6 +6,7 @@ from minio import Minio
 from minio.error import S3Error
 import io
 import os
+import uuid
 from config import (
     MINIO_ENDPOINT, MINIO_PORT, MINIO_ACCESS_KEY, MINIO_SECRET_KEY,
     MINIO_USE_SSL, REDIS_URL, WEBHOOK_URL, RAW_BUCKET, PROCESSED_BUCKET
@@ -23,10 +24,12 @@ minio_client = Minio(
 )
 
 # Initialize Redis client
-redis_client = redis.from_url(REDIS_URL)
+redis_client = redis.from_url(REDIS_URL, decode_responses=True)
 
-# BullMQ queue name
-QUEUE_NAME = "bull:photo-processing"
+# Redis Streams configuration
+STREAM_NAME = "photo-processing-stream"
+CONSUMER_GROUP = "photo-processing-group"
+CONSUMER_NAME = f"worker-{uuid.uuid4()}"
 
 
 def process_photo(job_data):
@@ -70,14 +73,10 @@ def process_photo(job_data):
             content_type='image/jpeg'
         )
         
-        # Increment processed counter
-        processed_count = redis_client.incr(f"vehicle:{vehicle_id}:processed")
+        # Notify backend about processed frame
+        notify_backend_frame_processed(vehicle_id, photo_index)
         
-        print(f"Photo {photo_index} processed successfully. Total processed: {processed_count}")
-        
-        # Check if all 24 photos are processed
-        if processed_count == 24:
-            send_webhook(vehicle_id)
+        print(f"Photo {photo_index} processed successfully")
             
     except S3Error as e:
         print(f"MinIO error processing photo {photo_index}: {e}")
@@ -87,70 +86,85 @@ def process_photo(job_data):
         raise
 
 
-def send_webhook(vehicle_id):
+def notify_backend_frame_processed(vehicle_id, photo_index):
     """
-    Send webhook when all 24 photos are processed.
+    Notify backend that a frame has been processed.
+    The backend will update the database and trigger webhook if all frames are done.
     
     Args:
         vehicle_id: Vehicle identifier
+        photo_index: Photo sequence number
     """
     try:
-        # Get all processed image keys
-        processed_keys = []
-        objects = minio_client.list_objects(PROCESSED_BUCKET, prefix=f"{vehicle_id}/")
-        for obj in objects:
-            if obj.object_name.startswith(f"{vehicle_id}/processed-"):
-                processed_keys.append(obj.object_name)
-        
-        # Sort by photo index
-        processed_keys.sort(key=lambda x: int(x.split('-')[1]))
-        
-        # Generate viewer URL
-        viewer_url = f"http://localhost:3000/viewer/{vehicle_id}"
-        
-        payload = {
-            'vehicleId': vehicle_id,
-            'status': 'completed',
-            'processedImages': processed_keys,
-            'viewerUrl': viewer_url,
-            'iframeCode': f'<iframe src="{viewer_url}" width="100%" height="600" frameborder="0"></iframe>'
-        }
-        
-        response = requests.post(WEBHOOK_URL, json=payload, timeout=10)
-        print(f"Webhook sent for vehicle {vehicle_id}: {response.status_code}")
-        
+        backend_url = os.getenv('BACKEND_URL', 'http://localhost:3000')
+        response = requests.patch(
+            f"{backend_url}/internal/vehicles/{vehicle_id}/frame-processed",
+            json={'photoIndex': photo_index},
+            timeout=10
+        )
+        print(f"Notified backend about frame {photo_index}: {response.status_code}")
     except Exception as e:
-        print(f"Error sending webhook for vehicle {vehicle_id}: {e}")
+        print(f"Error notifying backend about frame {photo_index}: {e}")
+
+
+def initialize_consumer_group():
+    """
+    Initialize the Redis Streams consumer group.
+    """
+    try:
+        redis_client.xgroup_create(STREAM_NAME, CONSUMER_GROUP, '0', mkstream=True)
+        print(f"Created consumer group: {CONSUMER_GROUP}")
+    except redis.ResponseError as e:
+        if 'BUSYGROUP' in str(e):
+            print(f"Consumer group {CONSUMER_GROUP} already exists")
+        else:
+            raise
 
 
 def worker_loop():
     """
-    Main worker loop: consume jobs from BullMQ queue using Redis Streams.
+    Main worker loop: consume jobs from Redis Streams using XREADGROUP.
     """
-    print("Starting AI worker...")
+    print(f"Starting AI worker as consumer: {CONSUMER_NAME}")
+    
+    # Initialize consumer group
+    initialize_consumer_group()
     
     while True:
         try:
-            # Use BRPOPLPUSH for FIFO queue behavior
-            # This simulates BullMQ job consumption
-            job_json = redis_client.brpop(f"{QUEUE_NAME}:waiting", timeout=5)
+            # Read new messages from the stream
+            # BLOCK 5000 = wait up to 5 seconds for new messages
+            # COUNT 1 = process one message at a time
+            messages = redis_client.xreadgroup(
+                CONSUMER_GROUP,
+                CONSUMER_NAME,
+                {STREAM_NAME: '>'},
+                count=1,
+                block=5000
+            )
             
-            if job_json:
-                queue_name, job_data_json = job_json
-                job_data = json.loads(job_data_json)
-                
-                print(f"Received job: {job_data}")
-                
-                try:
-                    process_photo(job_data)
-                    # Remove from processing set
-                    redis_client.lrem(f"{QUEUE_NAME}:waiting", 0, job_data_json)
-                except Exception as e:
-                    print(f"Job failed, will be retried: {e}")
-                    # Add back to queue for retry
-                    redis_client.lpush(f"{QUEUE_NAME}:waiting", job_data_json)
-                    time.sleep(1)
-                    
+            if messages:
+                for stream, stream_messages in messages:
+                    for message_id, fields in stream_messages:
+                        print(f"Received message {message_id}: {fields}")
+                        
+                        job_data = {
+                            'vehicleId': fields['vehicleId'],
+                            'photoIndex': int(fields['photoIndex']),
+                            'objectKey': fields['objectKey']
+                        }
+                        
+                        try:
+                            process_photo(job_data)
+                            # Acknowledge message after successful processing
+                            redis_client.xack(STREAM_NAME, CONSUMER_GROUP, message_id)
+                            print(f"Acknowledged message {message_id}")
+                        except Exception as e:
+                            print(f"Job failed for message {message_id}: {e}")
+                            # Message will be retried after delivery timeout (default 1 hour)
+                            # For immediate retry, we could move it to pending list
+                            time.sleep(1)
+                            
         except redis.RedisError as e:
             print(f"Redis error: {e}")
             time.sleep(5)

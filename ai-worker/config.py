@@ -11,6 +11,8 @@ MINIO_USE_SSL = os.getenv('MINIO_USE_SSL', 'false').lower() == 'true'
 
 REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379')
 
+BACKEND_URL = os.getenv('BACKEND_URL', 'http://localhost:3000')
+
 WEBHOOK_URL = os.getenv('WEBHOOK_URL', 'http://localhost:3001/webhook')
 
 RAW_BUCKET = 'vehicle-photos-raw'

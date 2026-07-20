@@ -51,9 +51,11 @@ services:
       MINIO_ACCESS_KEY: minioadmin
       MINIO_SECRET_KEY: minioadmin
       REDIS_URL: redis://redis:6379
+      BACKEND_URL: http://backend:3000
     depends_on:
       - minio
       - redis
+      - backend
     volumes:
       - ./ai-worker:/app
     deploy:

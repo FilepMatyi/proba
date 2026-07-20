@@ -1,0 +1,32 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model Dealership {
+  id         String            @id @default(uuid())
+  name       String
+  webhookUrl String
+  createdAt  DateTime          @default(now())
+  sessions   VehicleSession[]
+}
+
+model VehicleSession {
+  id              String     @id @default(uuid())
+  vehicleId       String     @unique
+  dealership      Dealership @relation(fields: [dealershipId], references: [id])
+  dealershipId    String
+  processedFrames Int        @default(0)
+  totalFrames     Int        @default(24)
+  status          String     @default("in_progress") // in_progress | completed
+  viewerUrl       String?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+}

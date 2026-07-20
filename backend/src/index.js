@@ -1,9 +1,11 @@
 const express = require('express');
 const config = require('./config');
 const { ensureBuckets } = require('./lib/minioClient');
+const { initializeConsumerGroup } = require('./queues/photoQueue');
 const photoRoutes = require('./routes/photos');
 const viewerRoutes = require('./routes/viewer');
 const webhookRoutes = require('./routes/webhook');
+const internalRoutes = require('./routes/internal');
 
 const app = express();
 
@@ -23,6 +25,7 @@ app.use((req, res, next) => {
 app.use('/api', photoRoutes);
 app.use('/', viewerRoutes);
 app.use('/api', webhookRoutes);
+app.use('/internal', internalRoutes);
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
@@ -31,6 +34,7 @@ app.get('/health', (req, res) => {
 async function start() {
   try {
     await ensureBuckets();
+    await initializeConsumerGroup();
     app.listen(config.port, () => {
       console.log(`Server running on port ${config.port}`);
     });

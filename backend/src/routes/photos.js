@@ -4,6 +4,7 @@ const { v4: uuidv4 } = require('uuid');
 const { minioClient, RAW_BUCKET } = require('../lib/minioClient');
 const photoQueue = require('../queues/photoQueue');
 const redis = require('../lib/redisConnection');
+const sessionService = require('../services/sessionService');
 
 const router = express.Router();
 
@@ -28,9 +29,12 @@ router.post('/vehicles/:vehicleId/photos', upload.single('photo'), async (req, r
       return res.status(400).json({ error: 'photoIndex must be between 1 and 24' });
     }
 
+    // Create or get vehicle session
+    await sessionService.getOrCreateSession(vehicleId);
+
     const objectKey = `${vehicleId}/${photoIndex}-${uuidv4()}.jpg`;
 
-    await minioClient.putObject(RAW_BUCKET, objectKey, photo.buffer, {
+    await minioClient.putObject(RAW_BUCKET, objectKey, photo.buffer, photo.buffer.length, {
       'Content-Type': 'image/jpeg',
     });
 

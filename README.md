@@ -18,10 +18,10 @@ B2B SaaS platform for car dealers to create premium, 360° studio-quality 3D veh
 [Phone Browser - React PWA]
         | (sequential upload with retry)
         v
-[Node.js/Express API] → MinIO (raw photos)
+[Node.js/Express API] → MinIO (raw photos) → Prisma (SQLite)
         |
         v
-[Redis + BullMQ Queue]
+[Redis Streams] (consumer groups with XACK)
         |
         v
 [Python AI Workers] → rembg (background removal) → Pillow (studio composition)
@@ -30,17 +30,28 @@ B2B SaaS platform for car dealers to create premium, 360° studio-quality 3D veh
 [MinIO (processed photos)]
         |
         v
-[Webhook] → [360° Viewer]
+[Internal API] → Prisma update → Webhook → [360° Viewer]
 ```
+
+**Architecture Decision: Redis Streams vs BullMQ**
+
+We chose Redis Streams over BullMQ for the message queue because:
+- Native Redis consumer group support with automatic message acknowledgment (XACK)
+- Better cross-language compatibility (Node.js ↔ Python)
+- Simpler implementation without external dependencies
+- Built-in message persistence and delivery guarantees
+- Easier to debug and monitor directly in Redis
+- Sufficient for MVP requirements without BullMQ's advanced features
 
 ## Tech Stack
 
 | Layer | Technology |
 |-------|------------|
 | Frontend | React (Vite), PWA, getUserMedia, DeviceOrientationEvent |
-| Backend API | Node.js, Express, Multer, BullMQ |
+| Backend API | Node.js, Express, Multer, Prisma ORM |
+| Database | SQLite (dev) / PostgreSQL (prod) |
 | Object Storage | MinIO |
-| Message Queue | Redis + BullMQ |
+| Message Queue | Redis Streams (consumer groups) |
 | AI Processing | Python, rembg (IS-Net), Pillow |
 | Output | Webhook + embeddable iframe viewer |
 
@@ -64,16 +75,23 @@ vehicleshoot-360/
 │   ├── vite.config.js            # PWA configuration
 │   └── package.json
 ├── backend/                      # Node.js API
+│   ├── prisma/
+│   │   ├── schema.prisma         # Database schema
+│   │   └── dev.db                # SQLite database (generated)
 │   ├── src/
 │   │   ├── lib/
 │   │   │   ├── minioClient.js    # MinIO connection
-│   │   │   └── redisConnection.js
+│   │   │   ├── redisConnection.js
+│   │   │   └── prisma.js         # Prisma client
 │   │   ├── queues/
-│   │   │   └── photoQueue.js     # BullMQ queue setup
+│   │   │   └── photoQueue.js     # Redis Streams setup
 │   │   ├── routes/
 │   │   │   ├── photos.js         # Upload endpoint
 │   │   │   ├── viewer.js         # 360° viewer
-│   │   │   └── webhook.js        # Webhook endpoint
+│   │   │   ├── webhook.js        # Webhook endpoint
+│   │   │   └── internal.js      # Internal API for workers
+│   │   ├── services/
+│   │   │   └── sessionService.js # Session management & webhooks
 │   │   ├── config.js
 │   │   └── index.js
 │   ├── Dockerfile
@@ -82,7 +100,7 @@ vehicleshoot-360/
 │   ├── processing/
 │   │   ├── background_removal.py    # rembg integration
 │   │   └── studio_compose.py        # Shadow generation
-│   ├── worker.py                   # Job consumer
+│   ├── worker.py                   # Redis Streams consumer
 │   ├── config.py
 │   ├── requirements.txt
 │   └── Dockerfile
@@ -126,6 +144,8 @@ vehicleshoot-360/
 ```bash
 cd backend
 npm install
+npx prisma generate
+npx prisma migrate dev --name init
 npm start
 ```
 
@@ -188,16 +208,39 @@ Interactive 360° viewer for processed photos.
 
 ### POST /api/webhook
 
-Webhook endpoint for processing completion notifications.
+Webhook endpoint for processing completion notifications (debug/test endpoint).
 
 **Payload:**
 ```json
 {
   "vehicleId": "Lancer-16",
   "status": "completed",
-  "processedImages": ["vehicleId/processed-1-uuid.jpg", ...],
+  "processedFrames": 24,
+  "totalFrames": 24,
   "viewerUrl": "http://localhost:3000/viewer/Lancer-16",
-  "iframeCode": "<iframe src=\"...\" ...></iframe>"
+  "iframeCode": "<iframe src=\"...) ...></iframe>"
+}
+```
+
+### PATCH /internal/vehicles/:vehicleId/frame-processed
+
+Internal endpoint called by AI workers to notify when a frame is processed.
+
+**Request:**
+```json
+{
+  "photoIndex": 5
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "vehicleId": "Lancer-16",
+  "processedFrames": 5,
+  "totalFrames": 24,
+  "status": "in_progress"
 }
 ```
 
@@ -208,16 +251,18 @@ Webhook endpoint for processing completion notifications.
 3. Camera view opens with silhouette overlay and level indicator
 4. Walks around vehicle, capturing 24 photos (shutter only active when level)
 5. Photos upload sequentially in background with retry logic
-6. Progress bar shows actual uploaded count
-7. AI processes each photo: background removal → studio composition
-8. When all 24 photos complete, webhook is sent
-9. Result: embeddable iframe with interactive 360° viewer
+6. Each upload creates a session in Prisma DB and enqueues job to Redis Streams
+7. AI workers consume jobs from Redis Streams, process photos, and notify backend via internal API
+8. Backend updates processed frame count in Prisma DB
+9. When all 24 frames complete, webhook is sent to dealership URL
+10. Result: embeddable iframe with interactive 360° viewer
 
 ## Configuration
 
 ### Backend (.env)
 ```
 PORT=3000
+BASE_URL=http://localhost:3000
 MINIO_ENDPOINT=minio
 MINIO_PORT=9000
 MINIO_ACCESS_KEY=minioadmin
@@ -236,6 +281,7 @@ VITE_API_BASE_URL=http://localhost:3000/api
 MINIO_ENDPOINT = os.getenv('MINIO_ENDPOINT', 'localhost')
 MINIO_PORT = int(os.getenv('MINIO_PORT', '9000'))
 REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379')
+BACKEND_URL = os.getenv('BACKEND_URL', 'http://localhost:3000')
 WEBHOOK_URL = os.getenv('WEBHOOK_URL', 'http://localhost:3001/webhook')
 ```
 
@@ -249,7 +295,8 @@ WEBHOOK_URL = os.getenv('WEBHOOK_URL', 'http://localhost:3001/webhook')
 - Set up monitoring and logging
 - Configure proper webhook retry logic
 - Use CDN for processed images
-- Implement database for vehicle metadata
+- Migrate SQLite to PostgreSQL for production
+- Configure proper CORS for production domains
 
 ## Testing with Mitsubishi Lancer 1.6
 
