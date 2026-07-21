@@ -1,84 +1,76 @@
-const prisma = require('../lib/prisma');
+const prisma = require('../lib/prisma'); // a megosztott singleton, NE hozz létre új PrismaClient-et itt
 const axios = require('axios');
 
 /**
- * Get or create a vehicle session for a dealership
- * For MVP, we'll use a default dealership
+ * Létrehozza vagy visszaadja a session-t egy vehicleId-hoz.
+ * MVP-hez egy alapértelmezett Dealership-et használ, ha még nincs egy sem.
  */
 async function getOrCreateSession(vehicleId) {
-  // For MVP, use a default dealership
   let dealership = await prisma.dealership.findFirst();
-  
+
   if (!dealership) {
     dealership = await prisma.dealership.create({
       data: {
         name: 'Default Dealership',
-        webhookUrl: process.env.WEBHOOK_URL || 'http://localhost:3001/webhook'
-      }
+        webhookUrl: process.env.WEBHOOK_URL || null,
+      },
     });
   }
 
-  let session = await prisma.vehicleSession.findUnique({
-    where: { vehicleId }
-  });
+  let session = await prisma.vehicleSession.findUnique({ where: { vehicleId } });
 
   if (!session) {
     session = await prisma.vehicleSession.create({
       data: {
         vehicleId,
         dealershipId: dealership.id,
+        status: 'processing',
+        processedFrames: 0,
         totalFrames: 24,
-        status: 'in_progress'
-      }
+      },
     });
+    console.log(`Munkamenet létrehozva: ${vehicleId}`);
   }
 
   return session;
 }
 
 /**
- * Increment processed frames count and check for completion
- * Includes idempotency protection to prevent duplicate counting
+ * Növeli a feldolgozott képek számát — idempotens: egy photoIndex csak egyszer számít.
  */
 async function incrementProcessedFrames(vehicleId, photoIndex) {
   const session = await prisma.vehicleSession.findUnique({
     where: { vehicleId },
-    include: { dealership: true }
+    include: { dealership: true },
   });
 
   if (!session) {
-    throw new Error('Session not found');
+    throw new Error(`Session not found for vehicleId: ${vehicleId}`);
   }
 
-  // Early return if session is already completed
   if (session.status === 'completed') {
-    console.log(`Session ${vehicleId} already completed, skipping frame ${photoIndex}`);
+    console.log(`Munkamenet [${vehicleId}] már kész, ${photoIndex}. képkocka kihagyva.`);
     return session;
   }
 
-  // Parse existing processed indexes
   const processedIndexes = JSON.parse(session.processedPhotoIndexes || '[]');
-
-  // Check if this photo index was already processed
   if (processedIndexes.includes(photoIndex)) {
-    console.log(`Photo index ${photoIndex} already processed for vehicle ${vehicleId}, skipping`);
+    console.log(`A(z) ${photoIndex}. képkocka már fel volt dolgozva ehhez: ${vehicleId}, kihagyva.`);
     return session;
   }
-
-  // Add this photo index to the processed list
   processedIndexes.push(photoIndex);
 
-  // Update session with new count and processed indexes
   const updatedSession = await prisma.vehicleSession.update({
     where: { vehicleId },
     data: {
       processedFrames: { increment: 1 },
-      processedPhotoIndexes: JSON.stringify(processedIndexes)
+      processedPhotoIndexes: JSON.stringify(processedIndexes),
     },
-    include: { dealership: true }
+    include: { dealership: true },
   });
 
-  // Check if all frames are processed
+  console.log(`Munkamenet [${vehicleId}]: ${updatedSession.processedFrames}/${updatedSession.totalFrames} kép kész.`);
+
   if (updatedSession.processedFrames >= updatedSession.totalFrames) {
     await markSessionCompleted(vehicleId);
   }
@@ -87,48 +79,48 @@ async function incrementProcessedFrames(vehicleId, photoIndex) {
 }
 
 /**
- * Mark session as completed and send webhook
+ * Lezárja a munkamenetet, elmenti a viewer URL-t, és kilövi a webhookot.
  */
 async function markSessionCompleted(vehicleId) {
   const session = await prisma.vehicleSession.update({
     where: { vehicleId },
     data: {
       status: 'completed',
-      viewerUrl: `/viewer/${vehicleId}`
+      viewerUrl: `/viewer/${vehicleId}`,
     },
-    include: { dealership: true }
+    include: { dealership: true },
   });
 
-  // Send webhook to dealership
-  await sendCompletionWebhook(session);
+  await triggerWebhook(session);
 
   return session;
 }
 
 /**
- * Send completion webhook to dealership
+ * Kilövi a completion webhookot a dealership-hez, ha van beállítva webhookUrl.
  */
-async function sendCompletionWebhook(session) {
+async function triggerWebhook(session) {
+  const webhookUrl = session.dealership?.webhookUrl;
+  if (!webhookUrl) {
+    console.log(`Nincs beállítva webhookUrl a(z) ${session.vehicleId} dealership-jéhez, kihagyva.`);
+    return;
+  }
+
   const viewerUrl = `${process.env.BASE_URL || 'http://localhost:3000'}${session.viewerUrl}`;
-  const iframeCode = `<iframe src="${viewerUrl}" width="100%" height="600" frameborder="0"></iframe>`;
 
   const payload = {
-    vehicleId: session.vehicleId,
-    status: 'completed',
-    processedFrames: session.processedFrames,
-    totalFrames: session.totalFrames,
-    viewerUrl,
-    iframeCode
+    event: 'vehicle_completed',
+    vehicle_id: session.vehicleId,
+    viewer_url: viewerUrl,
+    iframe_code: `<iframe src="${viewerUrl}" width="100%" height="600" frameborder="0"></iframe>`,
+    timestamp: new Date().toISOString(),
   };
 
   try {
-    await axios.post(session.dealership.webhookUrl, payload, {
-      timeout: 10000
-    });
-    console.log(`Webhook sent for vehicle ${session.vehicleId} to ${session.dealership.webhookUrl}`);
+    await axios.post(webhookUrl, payload, { timeout: 10000 });
+    console.log(`Webhook sikeresen kilőve ide: ${webhookUrl}`);
   } catch (error) {
-    console.error(`Failed to send webhook for vehicle ${session.vehicleId}:`, error.message);
-    // Don't throw - webhook failure shouldn't break the flow
+    console.error(`Hiba a webhook küldésekor: ${error.message}`);
   }
 }
 
@@ -136,5 +128,5 @@ module.exports = {
   getOrCreateSession,
   incrementProcessedFrames,
   markSessionCompleted,
-  sendCompletionWebhook
+  triggerWebhook,
 };
