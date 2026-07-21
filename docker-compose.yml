@@ -29,6 +29,7 @@ services:
       - "3000:3000"
     environment:
       PORT: 3000
+      BASE_URL: http://localhost:3000
       MINIO_ENDPOINT: minio
       MINIO_PORT: 9000
       MINIO_ACCESS_KEY: minioadmin

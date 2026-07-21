@@ -19,14 +19,15 @@ model Dealership {
 }
 
 model VehicleSession {
-  id              String     @id @default(uuid())
-  vehicleId       String     @unique
-  dealership      Dealership @relation(fields: [dealershipId], references: [id])
-  dealershipId    String
-  processedFrames Int        @default(0)
-  totalFrames     Int        @default(24)
-  status          String     @default("in_progress") // in_progress | completed
-  viewerUrl       String?
-  createdAt       DateTime   @default(now())
-  updatedAt       DateTime   @updatedAt
+  id                   String     @id @default(uuid())
+  vehicleId            String     @unique
+  dealership           Dealership @relation(fields: [dealershipId], references: [id])
+  dealershipId         String
+  processedFrames      Int        @default(0)
+  totalFrames           Int        @default(24)
+  processedPhotoIndexes String     @default("[]") // JSON array of processed photo indexes
+  status               String     @default("in_progress") // in_progress | completed
+  viewerUrl            String?
+  createdAt            DateTime   @default(now())
+  updatedAt            DateTime   @updatedAt
 }

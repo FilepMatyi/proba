@@ -14,7 +14,7 @@ router.patch('/vehicles/:vehicleId/frame-processed', async (req, res) => {
 
     console.log(`Frame ${photoIndex} processed for vehicle ${vehicleId}`);
 
-    const session = await sessionService.incrementProcessedFrames(vehicleId);
+    const session = await sessionService.incrementProcessedFrames(vehicleId, photoIndex);
 
     res.json({
       success: true,

@@ -38,8 +38,9 @@ async function getOrCreateSession(vehicleId) {
 
 /**
  * Increment processed frames count and check for completion
+ * Includes idempotency protection to prevent duplicate counting
  */
-async function incrementProcessedFrames(vehicleId) {
+async function incrementProcessedFrames(vehicleId, photoIndex) {
   const session = await prisma.vehicleSession.findUnique({
     where: { vehicleId },
     include: { dealership: true }
@@ -49,10 +50,30 @@ async function incrementProcessedFrames(vehicleId) {
     throw new Error('Session not found');
   }
 
+  // Early return if session is already completed
+  if (session.status === 'completed') {
+    console.log(`Session ${vehicleId} already completed, skipping frame ${photoIndex}`);
+    return session;
+  }
+
+  // Parse existing processed indexes
+  const processedIndexes = JSON.parse(session.processedPhotoIndexes || '[]');
+
+  // Check if this photo index was already processed
+  if (processedIndexes.includes(photoIndex)) {
+    console.log(`Photo index ${photoIndex} already processed for vehicle ${vehicleId}, skipping`);
+    return session;
+  }
+
+  // Add this photo index to the processed list
+  processedIndexes.push(photoIndex);
+
+  // Update session with new count and processed indexes
   const updatedSession = await prisma.vehicleSession.update({
     where: { vehicleId },
     data: {
-      processedFrames: { increment: 1 }
+      processedFrames: { increment: 1 },
+      processedPhotoIndexes: JSON.stringify(processedIndexes)
     },
     include: { dealership: true }
   });
