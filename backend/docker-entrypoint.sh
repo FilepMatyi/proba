@@ -1,8 +1,7 @@
 #!/bin/sh
 set -e
 
-# Run Prisma migrations
-npx prisma migrate deploy
+# Sync a séma szerint (db push, nem migrate — MVP fázis, nincs migrations history)
+npx prisma db push --accept-data-loss --skip-generate
 
-# Execute the main command
 exec "$@"

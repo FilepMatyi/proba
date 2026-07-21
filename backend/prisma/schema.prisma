@@ -1,5 +1,4 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
+// backend/prisma/schema.prisma
 
 generator client {
   provider = "prisma-client-js"
@@ -7,27 +6,27 @@ generator client {
 
 datasource db {
   provider = "sqlite"
-  url      = "file:./dev.db"
+  url      = env("DATABASE_URL") // A .env fájlban: DATABASE_URL="file:./dev.db"
 }
 
 model Dealership {
-  id         String            @id @default(uuid())
-  name       String
-  webhookUrl String
-  createdAt  DateTime          @default(now())
-  sessions   VehicleSession[]
+  id          Int              @id @default(autoincrement())
+  name        String
+  webhookUrl  String?          // Ide küldjük a POST kérést a 24. kép után
+  sessions    VehicleSession[]
+  createdAt   DateTime         @default(now())
 }
 
 model VehicleSession {
-  id                   String     @id @default(uuid())
-  vehicleId            String     @unique
-  dealership           Dealership @relation(fields: [dealershipId], references: [id])
-  dealershipId         String
-  processedFrames      Int        @default(0)
-  totalFrames           Int        @default(24)
-  processedPhotoIndexes String     @default("[]") // JSON array of processed photo indexes
-  status               String     @default("in_progress") // in_progress | completed
-  viewerUrl            String?
-  createdAt            DateTime   @default(now())
-  updatedAt            DateTime   @updatedAt
+  id                     String     @id @default(uuid())  // Egyedi azonosító a fotózáshoz
+  vehicleId              String     @unique                // A kereskedő által megadott azonosító (pl. "Lancer-16") — a kód ez alapján keres
+  dealershipId           Int
+  dealership             Dealership @relation(fields: [dealershipId], references: [id])
+  status                 String     @default("processing")  // processing, completed, failed
+  processedFrames        Int        @default(0)             // 0-tól 24-ig számol
+  totalFrames            Int        @default(24)
+  processedPhotoIndexes  String     @default("[]")           // JSON tömb, duplikáció-védelemhez
+  viewerUrl              String?
+  createdAt              DateTime   @default(now())
+  updatedAt              DateTime   @updatedAt
 }
