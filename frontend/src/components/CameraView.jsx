@@ -35,28 +35,34 @@ function CameraView({ isLevel, onCapture, currentIndex, totalPhotos }) {
   };
 
   const handleCapture = () => {
-    if (!videoRef.current || !canvasRef.current || !isLevel) {
-      return;
-    }
-
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-
-    // Target size instead of full sensor resolution — scale during the draw itself
-    const TARGET_WIDTH = 1280;
-    const TARGET_HEIGHT = 720;
-
-    canvas.width = TARGET_WIDTH;
-    canvas.height = TARGET_HEIGHT;
-
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(video, 0, 0, TARGET_WIDTH, TARGET_HEIGHT);
-
-    canvas.toBlob((blob) => {
-      if (blob) {
-        onCapture(blob);
+    try {
+      if (!videoRef.current || !canvasRef.current || !isLevel) {
+        return;
       }
-    }, 'image/jpeg', 0.8);
+
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+
+      // Target size instead of full sensor resolution — scale during the draw itself
+      const TARGET_WIDTH = 1280;
+      const TARGET_HEIGHT = 720;
+
+      canvas.width = TARGET_WIDTH;
+      canvas.height = TARGET_HEIGHT;
+
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0, TARGET_WIDTH, TARGET_HEIGHT);
+
+      canvas.toBlob((blob) => {
+        if (!blob) {
+          throw new Error("Canvas toBlob failed - Blob is null");
+        }
+        onCapture(blob);
+      }, 'image/jpeg', 0.8);
+    } catch (error) {
+      alert(`Capture Error: ${error.message}`);
+      console.error('Capture error:', error);
+    }
   };
 
   return (

@@ -50,26 +50,31 @@ class UploadQueue {
   }
 
   async uploadWithRetry(job) {
-    const formData = new FormData();
-    formData.append('photo', job.blob);
-    formData.append('photoIndex', job.photoIndex);
+    try {
+      const formData = new FormData();
+      formData.append('photo', job.blob);
+      formData.append('photoIndex', job.photoIndex);
 
-    job.attempts++;
+      job.attempts++;
 
-    const response = await fetch(
-      `${API_BASE_URL}/vehicles/${job.vehicleId}/photos`,
-      {
-        method: 'POST',
-        body: formData
+      const response = await fetch(
+        `${API_BASE_URL}/vehicles/${job.vehicleId}/photos`,
+        {
+          method: 'POST',
+          body: formData
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`Upload failed: ${response.statusText}`);
       }
-    );
 
-    if (!response.ok) {
-      throw new Error(`Upload failed: ${response.statusText}`);
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      alert(`Upload Error: ${error.message}`);
+      throw error;
     }
-
-    const data = await response.json();
-    return data;
   }
 }
 
