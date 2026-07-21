@@ -42,17 +42,21 @@ function CameraView({ isLevel, onCapture, currentIndex, totalPhotos }) {
     const video = videoRef.current;
     const canvas = canvasRef.current;
 
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
+    // Target size instead of full sensor resolution — scale during the draw itself
+    const TARGET_WIDTH = 1280;
+    const TARGET_HEIGHT = 720;
+
+    canvas.width = TARGET_WIDTH;
+    canvas.height = TARGET_HEIGHT;
 
     const ctx = canvas.getContext('2d');
-    ctx.drawImage(video, 0, 0);
+    ctx.drawImage(video, 0, 0, TARGET_WIDTH, TARGET_HEIGHT);
 
     canvas.toBlob((blob) => {
       if (blob) {
         onCapture(blob);
       }
-    }, 'image/jpeg', 0.95);
+    }, 'image/jpeg', 0.8);
   };
 
   return (

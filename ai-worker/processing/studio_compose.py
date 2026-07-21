@@ -5,23 +5,24 @@ import io
 def create_studio_image(vehicle_image):
     """
     Place vehicle on white canvas with realistic shadow under wheels.
-    
+
     Args:
         vehicle_image: PIL Image with transparent background
-        
+
     Returns:
         PIL Image on white canvas with shadow
     """
-    # Create white canvas (1920x1080 or based on vehicle size)
+    # Create white canvas with padding around the vehicle image
     width, height = vehicle_image.size
-    canvas_width = max(width + 200, 1920)
-    canvas_height = max(height + 200, 1080)
-    
+    padding = 100
+    canvas_width = width + (padding * 2)
+    canvas_height = height + (padding * 2)
+
     canvas = Image.new('RGB', (canvas_width, canvas_height), (255, 255, 255))
-    
+
     # Calculate center position
-    x_offset = (canvas_width - width) // 2
-    y_offset = (canvas_height - height) // 2
+    x_offset = padding
+    y_offset = padding
     
     # Create shadow layer
     shadow_layer = Image.new('RGBA', (canvas_width, canvas_height), (0, 0, 0, 0))

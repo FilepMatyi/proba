@@ -1,11 +1,20 @@
 const prisma = require('../lib/prisma'); // a megosztott singleton, NE hozz létre új PrismaClient-et itt
 const axios = require('axios');
 
+// Simple in-memory cache with 5-minute TTL
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const dealershipCache = { data: null, timestamp: 0 };
+const sessionCache = new Map();
+
 /**
- * Létrehozza vagy visszaadja a session-t egy vehicleId-hoz.
- * MVP-hez egy alapértelmezett Dealership-et használ, ha még nincs egy sem.
+ * Get cached dealership or fetch from DB
  */
-async function getOrCreateSession(vehicleId) {
+async function getCachedDealership() {
+  const now = Date.now();
+  if (dealershipCache.data && (now - dealershipCache.timestamp) < CACHE_TTL) {
+    return dealershipCache.data;
+  }
+
   let dealership = await prisma.dealership.findFirst();
 
   if (!dealership) {
@@ -17,7 +26,39 @@ async function getOrCreateSession(vehicleId) {
     });
   }
 
-  let session = await prisma.vehicleSession.findUnique({ where: { vehicleId } });
+  dealershipCache.data = dealership;
+  dealershipCache.timestamp = now;
+  return dealership;
+}
+
+/**
+ * Get cached session or fetch from DB
+ */
+async function getCachedSession(vehicleId) {
+  const cached = sessionCache.get(vehicleId);
+  const now = Date.now();
+
+  if (cached && (now - cached.timestamp) < CACHE_TTL) {
+    return cached.data;
+  }
+
+  const session = await prisma.vehicleSession.findUnique({ where: { vehicleId } });
+
+  if (session) {
+    sessionCache.set(vehicleId, { data: session, timestamp: now });
+  }
+
+  return session;
+}
+
+/**
+ * Létrehozza vagy visszaadja a session-t egy vehicleId-hoz.
+ * MVP-hez egy alapértelmezett Dealership-et használ, ha még nincs egy sem.
+ */
+async function getOrCreateSession(vehicleId) {
+  const dealership = await getCachedDealership();
+
+  let session = await getCachedSession(vehicleId);
 
   if (!session) {
     session = await prisma.vehicleSession.create({
@@ -30,6 +71,8 @@ async function getOrCreateSession(vehicleId) {
       },
     });
     console.log(`Munkamenet létrehozva: ${vehicleId}`);
+    // Cache the new session
+    sessionCache.set(vehicleId, { data: session, timestamp: Date.now() });
   }
 
   return session;
@@ -68,6 +111,9 @@ async function incrementProcessedFrames(vehicleId, photoIndex) {
     },
     include: { dealership: true },
   });
+
+  // Invalidate cache for this session
+  sessionCache.delete(vehicleId);
 
   console.log(`Munkamenet [${vehicleId}]: ${updatedSession.processedFrames}/${updatedSession.totalFrames} kép kész.`);
 

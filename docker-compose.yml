@@ -60,7 +60,7 @@ services:
     volumes:
       - ./ai-worker:/app
     deploy:
-      replicas: 2
+      replicas: 4
 
 volumes:
   minio_data:

@@ -3,7 +3,8 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 class UploadQueue {
   constructor(onProgress) {
     this.queue = [];
-    this.isUploading = false;
+    this.activeUploads = 0;
+    this.maxConcurrent = 2;
     this.onProgress = onProgress;
   }
 
@@ -24,28 +25,28 @@ class UploadQueue {
   }
 
   async processQueue() {
-    if (this.isUploading || this.queue.length === 0) {
+    if (this.activeUploads >= this.maxConcurrent || this.queue.length === 0) {
       return;
     }
 
-    this.isUploading = true;
+    const job = this.queue.shift();
+    this.activeUploads++;
 
-    while (this.queue.length > 0) {
-      const job = this.queue[0];
-
-      try {
-        await this.uploadWithRetry(job);
-        this.queue.shift();
-        this.onProgress(job.photoIndex);
-      } catch (error) {
-        if (job.attempts >= job.maxAttempts) {
-          this.queue.shift();
-          job.reject(error);
-        }
+    try {
+      await this.uploadWithRetry(job);
+      this.onProgress(job.photoIndex);
+      job.resolve();
+    } catch (error) {
+      if (job.attempts >= job.maxAttempts) {
+        job.reject(error);
+      } else {
+        // Re-queue for retry
+        this.queue.unshift(job);
       }
+    } finally {
+      this.activeUploads--;
+      this.processQueue();
     }
-
-    this.isUploading = false;
   }
 
   async uploadWithRetry(job) {
