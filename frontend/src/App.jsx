@@ -38,27 +38,40 @@ function App() {
 
   if (isCapturing) {
     if (currentIndex >= TOTAL_PHOTOS) {
+      if (uploadedCount >= TOTAL_PHOTOS) {
+        return (
+          <div style={{
+            display: 'flex', flexDirection: 'column', alignItems: 'center',
+            justifyContent: 'center', height: '100dvh', width: '100vw',
+            overflow: 'hidden', backgroundColor: '#000', color: '#fff', padding: '20px'
+          }}>
+            <h2 style={{ color: '#4CAF50' }}>✅ Success!</h2>
+            <p style={{ marginTop: '20px', textAlign: 'center' }}>
+              All 24 photos uploaded successfully!<br />
+              You can now view the 3D model on your computer.
+            </p>
+            <button
+              onClick={() => { setIsCapturing(false); setVehicleId(''); }}
+              style={{ marginTop: '30px', padding: '12px 30px', fontSize: '16px',
+                backgroundColor: '#4CAF50', color: '#fff', border: 'none',
+                borderRadius: '10px', cursor: 'pointer' }}
+            >
+              Start New Vehicle
+            </button>
+          </div>
+        );
+      }
+
+      // uploadedCount még nem érte el a 24-et — ez a valódi "processing" képernyő
       return (
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            height: '100dvh',
-            width: '100vw',
-            overflow: 'hidden',
-            backgroundColor: '#000',
-            color: '#fff'
-          }}
-        >
+        <div style={{
+          display: 'flex', flexDirection: 'column', alignItems: 'center',
+          justifyContent: 'center', height: '100dvh', width: '100vw',
+          overflow: 'hidden', backgroundColor: '#000', color: '#fff'
+        }}>
           <h2>Processing Photos</h2>
           <ProgressBar uploadedCount={uploadedCount} totalPhotos={TOTAL_PHOTOS} />
-          <p style={{ marginTop: '20px' }}>
-            {uploadedCount < TOTAL_PHOTOS
-              ? 'Uploading and processing your photos...'
-              : 'All photos uploaded! AI processing in progress.'}
-          </p>
+          <p style={{ marginTop: '20px' }}>Uploading and processing your photos...</p>
         </div>
       );
     }

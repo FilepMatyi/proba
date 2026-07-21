@@ -5,13 +5,14 @@ const router = express.Router();
 
 router.get('/viewer/:vehicleId', async (req, res) => {
   try {
-    const { vehicleId } = req.params;
+    const { vehicleId } = req.params.vehicleId.toLowerCase().trim();
 
     // Get all processed images for this vehicle
-    const objects = await minioClient.listObjects(PROCESSED_BUCKET, {
-      prefix: `${vehicleId}/processed-`,
-      recursive: false
-    });
+    const objects = await minioClient.listObjects(
+  PROCESSED_BUCKET,
+  `${vehicleId}/processed-`,
+  false
+);
 
     const imageUrls = [];
     for await (const obj of objects) {
