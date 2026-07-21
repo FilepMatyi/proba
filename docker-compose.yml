@@ -46,7 +46,6 @@ services:
 
   ai-worker:
     build: ./ai-worker
-    container_name: vehicleshoot-ai-worker
     environment:
       MINIO_ENDPOINT: minio
       MINIO_PORT: 9000

@@ -50,8 +50,8 @@ function Waterpass({ onLevelChange }) {
       const betaValue = event.beta;
       setBeta(betaValue);
 
-      // Check if device is level (within ±5 degrees of horizontal)
-      const level = Math.abs(betaValue) < 5;
+      // Check if device is level (within ±5 degrees of vertical/portrait mode)
+      const level = Math.abs(betaValue - 90) < 5;
       setIsLevel(level);
       onLevelChange(level);
     }
