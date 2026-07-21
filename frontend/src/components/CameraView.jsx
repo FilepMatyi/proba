@@ -66,7 +66,7 @@ function CameraView({ isLevel, onCapture, currentIndex, totalPhotos }) {
   };
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100vh' }}>
+    <div style={{ position: 'relative', width: '100%', height: '100vh', touchAction: 'none' }}>
       <video
         ref={videoRef}
         autoPlay

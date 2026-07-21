@@ -45,7 +45,9 @@ function App() {
             flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
-            height: '100vh',
+            height: '100dvh',
+            width: '100vw',
+            overflow: 'hidden',
             backgroundColor: '#000',
             color: '#fff'
           }}
@@ -62,7 +64,7 @@ function App() {
     }
 
     return (
-      <div>
+      <div style={{ height: '100dvh', width: '100vw', overflow: 'hidden' }}>
         <Waterpass onLevelChange={setIsLevel} />
         <CameraView
           isLevel={isLevel}
@@ -82,7 +84,9 @@ function App() {
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        height: '100vh',
+        height: '100dvh',
+        width: '100vw',
+        overflow: 'hidden',
         backgroundColor: '#000',
         color: '#fff',
         padding: '20px'
