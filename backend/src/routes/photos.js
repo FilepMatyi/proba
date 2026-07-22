@@ -17,7 +17,7 @@ const upload = multer({
 
 router.post('/vehicles/:vehicleId/photos', upload.single('photo'), async (req, res) => {
   try {
-    const { vehicleId } = req.params.vehicleId.toLowerCase().trim();
+    const vehicleId = req.params.vehicleId.toLowerCase().trim();
     const { photoIndex } = req.body;
     const photo = req.file;
 

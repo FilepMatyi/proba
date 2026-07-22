@@ -5,7 +5,7 @@ const router = express.Router();
 
 router.get('/viewer/:vehicleId', async (req, res) => {
   try {
-    const { vehicleId } = req.params.vehicleId.toLowerCase().trim();
+    const vehicleId = req.params.vehicleId.toLowerCase().trim();
 
     // Get all processed images for this vehicle
     const objects = await minioClient.listObjects(
