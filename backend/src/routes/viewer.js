@@ -81,6 +81,13 @@ router.get('/viewer/:vehicleId', async (req, res) => {
       width: 100%;
       padding-top: 56.25%; /* 16:9 aspect ratio */
       background: #000;
+      cursor: grab;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: none;
+    }
+    .image-container.grabbing {
+      cursor: grabbing;
     }
     .image-container img {
       position: absolute;
@@ -90,49 +97,40 @@ router.get('/viewer/:vehicleId', async (req, res) => {
       height: 100%;
       object-fit: contain;
       opacity: 0;
-      transition: opacity 0.3s ease;
+      transition: opacity 0.15s ease;
     }
     .image-container img.active {
       opacity: 1;
     }
-    .controls {
+    .drag-hint {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
       display: flex;
-      justify-content: center;
+      flex-direction: column;
       align-items: center;
-      gap: 20px;
-      padding: 20px;
-      background: white;
+      gap: 10px;
+      pointer-events: none;
+      transition: opacity 0.5s ease;
+      z-index: 10;
     }
-    button {
-      padding: 12px 24px;
+    .drag-hint.hidden {
+      opacity: 0;
+    }
+    .drag-hint-icon {
+      font-size: 48px;
+      color: rgba(255, 255, 255, 0.8);
+      text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+    }
+    .drag-hint-text {
+      color: rgba(255, 255, 255, 0.9);
       font-size: 16px;
-      background: #000;
-      color: white;
-      border: none;
-      border-radius: 5px;
-      cursor: pointer;
-      transition: background 0.2s;
-    }
-    button:hover {
-      background: #333;
-    }
-    button:disabled {
-      background: #ccc;
-      cursor: not-allowed;
-    }
-    .progress-indicator {
-      display: flex;
-      gap: 5px;
-    }
-    .progress-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: #ddd;
-      transition: background 0.3s;
-    }
-    .progress-dot.active {
-      background: #000;
+      font-weight: 500;
+      text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+      background: rgba(0, 0, 0, 0.3);
+      padding: 8px 16px;
+      border-radius: 20px;
     }
     .info {
       text-align: center;
@@ -147,6 +145,7 @@ router.get('/viewer/:vehicleId', async (req, res) => {
       transform: translate(-50%, -50%);
       color: white;
       font-size: 18px;
+      z-index: 5;
     }
   </style>
 </head>
@@ -154,16 +153,14 @@ router.get('/viewer/:vehicleId', async (req, res) => {
   <div class="viewer-container">
     <div class="image-container" id="imageContainer">
       <div class="loading">Loading images...</div>
-    </div>
-    <div class="controls">
-      <button id="prevBtn">← Previous</button>
-      <div class="progress-indicator" id="progressIndicator"></div>
-      <button id="nextBtn">Next →</button>
+      <div class="drag-hint" id="dragHint">
+        <div class="drag-hint-icon">↔</div>
+        <div class="drag-hint-text">Drag to rotate</div>
+      </div>
     </div>
     <div class="info">
       <strong>Vehicle ID:</strong> ${vehicleId} | 
-      <strong>Images:</strong> ${imageUrls.length} | 
-      Drag or use buttons to rotate
+      <strong>Images:</strong> ${imageUrls.length}
     </div>
   </div>
 
@@ -172,14 +169,18 @@ router.get('/viewer/:vehicleId', async (req, res) => {
     let currentIndex = 0;
     let isDragging = false;
     let startX = 0;
+    let hasInteracted = false;
+    const PIXELS_PER_FRAME = 18; // 15-20 pixels per frame for smooth rotation
 
     const imageContainer = document.getElementById('imageContainer');
-    const progressIndicator = document.getElementById('progressIndicator');
-    const prevBtn = document.getElementById('prevBtn');
-    const nextBtn = document.getElementById('nextBtn');
+    const dragHint = document.getElementById('dragHint');
+    const loading = document.querySelector('.loading');
 
-    // Load images
-    function loadImages() {
+    // Preload all images before showing
+    function preloadImages() {
+      let loadedCount = 0;
+      const totalImages = imageUrls.length;
+      
       imageUrls.forEach((url, index) => {
         const img = document.createElement('img');
         img.src = url;
@@ -187,117 +188,120 @@ router.get('/viewer/:vehicleId', async (req, res) => {
         img.dataset.index = index;
         
         img.onload = () => {
-          if (index === 0) {
-            img.classList.add('active');
-            document.querySelector('.loading').style.display = 'none';
+          loadedCount++;
+          if (loadedCount === totalImages) {
+            // All images loaded, hide loading screen
+            loading.style.display = 'none';
+            showImage(0);
+          }
+        };
+        
+        img.onerror = () => {
+          console.error(\`Failed to load image: \${url}\`);
+          loadedCount++;
+          if (loadedCount === totalImages) {
+            loading.style.display = 'none';
+            showImage(0);
           }
         };
         
         imageContainer.appendChild(img);
       });
-
-      // Create progress dots
-      imageUrls.forEach((_, index) => {
-        const dot = document.createElement('div');
-        dot.className = 'progress-dot';
-        if (index === 0) dot.classList.add('active');
-        progressIndicator.appendChild(dot);
-      });
     }
 
     function showImage(index) {
-      const images = imageContainer.querySelectorAll('img');
-      const dots = progressIndicator.querySelectorAll('.progress-dot');
+      // Seamless looping
+      if (index < 0) {
+        index = imageUrls.length - 1;
+      } else if (index >= imageUrls.length) {
+        index = 0;
+      }
       
+      const images = imageContainer.querySelectorAll('img');
       images.forEach(img => img.classList.remove('active'));
-      dots.forEach(dot => dot.classList.remove('active'));
       
       if (images[index]) {
         images[index].classList.add('active');
-        dots[index].classList.add('active');
       }
       
       currentIndex = index;
-      prevBtn.disabled = currentIndex === 0;
-      nextBtn.disabled = currentIndex === imageUrls.length - 1;
     }
 
-    prevBtn.addEventListener('click', () => {
-      if (currentIndex > 0) {
-        showImage(currentIndex - 1);
+    function hideDragHint() {
+      if (!hasInteracted) {
+        hasInteracted = true;
+        dragHint.classList.add('hidden');
       }
-    });
+    }
 
-    nextBtn.addEventListener('click', () => {
-      if (currentIndex < imageUrls.length - 1) {
-        showImage(currentIndex + 1);
-      }
-    });
-
-    // Touch/drag support
+    // Mouse events
     imageContainer.addEventListener('mousedown', (e) => {
       isDragging = true;
       startX = e.clientX;
+      imageContainer.classList.add('grabbing');
+      hideDragHint();
     });
 
     imageContainer.addEventListener('mousemove', (e) => {
       if (!isDragging) return;
       
       const diff = e.clientX - startX;
-      if (Math.abs(diff) > 50) {
-        if (diff > 0 && currentIndex > 0) {
-          showImage(currentIndex - 1);
-        } else if (diff < 0 && currentIndex < imageUrls.length - 1) {
-          showImage(currentIndex + 1);
-        }
+      const frameChange = Math.floor(diff / PIXELS_PER_FRAME);
+      
+      if (frameChange !== 0) {
+        showImage(currentIndex - frameChange);
         startX = e.clientX;
       }
     });
 
     imageContainer.addEventListener('mouseup', () => {
       isDragging = false;
+      imageContainer.classList.remove('grabbing');
     });
 
     imageContainer.addEventListener('mouseleave', () => {
       isDragging = false;
+      imageContainer.classList.remove('grabbing');
     });
 
     // Touch events
     imageContainer.addEventListener('touchstart', (e) => {
       isDragging = true;
       startX = e.touches[0].clientX;
+      imageContainer.classList.add('grabbing');
+      hideDragHint();
     });
 
     imageContainer.addEventListener('touchmove', (e) => {
       if (!isDragging) return;
       
       const diff = e.touches[0].clientX - startX;
-      if (Math.abs(diff) > 50) {
-        if (diff > 0 && currentIndex > 0) {
-          showImage(currentIndex - 1);
-        } else if (diff < 0 && currentIndex < imageUrls.length - 1) {
-          showImage(currentIndex + 1);
-        }
+      const frameChange = Math.floor(diff / PIXELS_PER_FRAME);
+      
+      if (frameChange !== 0) {
+        showImage(currentIndex - frameChange);
         startX = e.touches[0].clientX;
       }
     });
 
     imageContainer.addEventListener('touchend', () => {
       isDragging = false;
+      imageContainer.classList.remove('grabbing');
     });
 
-    // Keyboard navigation
+    // Keyboard navigation (optional, for accessibility)
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'ArrowLeft' && currentIndex > 0) {
+      if (e.key === 'ArrowLeft') {
         showImage(currentIndex - 1);
-      } else if (e.key === 'ArrowRight' && currentIndex < imageUrls.length - 1) {
+        hideDragHint();
+      } else if (e.key === 'ArrowRight') {
         showImage(currentIndex + 1);
+        hideDragHint();
       }
     });
 
     // Initialize
-    loadImages();
-    showImage(0);
+    preloadImages();
   </script>
 </body>
 </html>
