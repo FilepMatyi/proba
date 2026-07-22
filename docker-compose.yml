@@ -35,6 +35,8 @@ services:
       MINIO_PORT: 9000
       MINIO_ACCESS_KEY: minioadmin
       MINIO_SECRET_KEY: minioadmin
+      MINIO_PUBLIC_ENDPOINT: localhost
+      MINIO_PUBLIC_PORT: 9000
       REDIS_URL: redis://redis:6379
       WEBHOOK_URL: http://localhost:3001/webhook
     depends_on:
@@ -42,6 +44,7 @@ services:
       - redis
     volumes:
       - ./backend:/app
+      - ./frontend/dist:/app/frontend/dist:ro
       - /app/node_modules
 
   ai-worker:

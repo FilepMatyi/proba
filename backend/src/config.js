@@ -10,6 +10,11 @@ module.exports = {
     accessKey: process.env.MINIO_ACCESS_KEY || 'minioadmin',
     secretKey: process.env.MINIO_SECRET_KEY || 'minioadmin',
   },
+  minioPublic: {
+    endPoint: process.env.MINIO_PUBLIC_ENDPOINT || 'localhost',
+    port: parseInt(process.env.MINIO_PUBLIC_PORT) || 9000,
+    useSSL: process.env.MINIO_PUBLIC_USE_SSL === 'true',
+  },
   redis: {
     url: process.env.REDIS_URL || 'redis://localhost:6379',
   },

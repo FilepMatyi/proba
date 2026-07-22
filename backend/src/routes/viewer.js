@@ -1,7 +1,19 @@
 const express = require('express');
+const Minio = require('minio');
 const { minioClient, PROCESSED_BUCKET } = require('../lib/minioClient');
+const config = require('../config');
 
 const router = express.Router();
+
+
+const publicMinioClient = new Minio.Client({
+  endPoint: config.minioPublic.endPoint,
+  port: config.minioPublic.port,
+  useSSL: config.minioPublic.useSSL,
+  accessKey: config.minio.accessKey,
+  secretKey: config.minio.secretKey,
+  region: 'us-east-1',
+});
 
 router.get('/viewer/:vehicleId', async (req, res) => {
   try {
@@ -17,7 +29,8 @@ router.get('/viewer/:vehicleId', async (req, res) => {
     const imageUrls = [];
     for await (const obj of objects) {
       // Generate presigned URL valid for 7 days
-      const url = await minioClient.presignedGetObject(
+      // Cseréld erre:
+      const url = await publicMinioClient.presignedGetObject(
         PROCESSED_BUCKET,
         obj.name,
         60 * 60 * 24 * 7

@@ -1,4 +1,5 @@
 const express = require('express');
+const path = require('path');
 const config = require('./config');
 const { ensureBuckets } = require('./lib/minioClient');
 const { initializeConsumerGroup } = require('./queues/photoQueue');
@@ -23,9 +24,23 @@ app.use((req, res, next) => {
 });
 
 app.use('/api', photoRoutes);
-app.use('/', viewerRoutes);
 app.use('/api', webhookRoutes);
 app.use('/internal', internalRoutes);
+
+// Serve static frontend files
+const frontendDistPath = path.join(__dirname, '../frontend/dist');
+app.use(express.static(frontendDistPath, { 
+  fallthrough: true,
+  index: 'index.html'
+}));
+
+// Viewer routes (must come after static files to avoid conflicts)
+app.use('/', viewerRoutes);
+
+// SPA fallback - serve index.html for non-API routes
+app.get('*', (req, res) => {
+  res.sendFile(path.join(frontendDistPath, 'index.html'));
+});
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok' });

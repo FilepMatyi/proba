@@ -1,4 +1,5 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
+// Use relative path since frontend and backend are served from same origin
+const API_BASE_URL = '/api';
 
 class UploadQueue {
   constructor(onProgress) {
