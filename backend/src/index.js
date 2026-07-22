@@ -15,7 +15,7 @@ app.use(express.urlencoded({ extended: true }));
 
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') {
     return res.sendStatus(200);
@@ -34,16 +34,18 @@ app.use(express.static(frontendDistPath, {
   index: 'index.html'
 }));
 
+// Health check endpoint (must be before the SPA wildcard fallback)
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok' });
+});
+
 // Viewer routes (must come after static files to avoid conflicts)
 app.use('/', viewerRoutes);
 
-// SPA fallback - serve index.html for non-API routes
+// SPA fallback - serve index.html for client-side routes only.
+// API, internal, and viewer routes are already handled above.
 app.get('*', (req, res) => {
   res.sendFile(path.join(frontendDistPath, 'index.html'));
-});
-
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok' });
 });
 
 async function start() {

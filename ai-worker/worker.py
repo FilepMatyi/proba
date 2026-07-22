@@ -60,7 +60,7 @@ def process_photo(job_data):
         
         # Convert to bytes
         img_byte_arr = io.BytesIO()
-        studio_image.save(img_byte_arr, format='JPEG', quality=95)
+        studio_image.save(img_byte_arr, format='JPEG', quality=97, subsampling=0, optimize=True)
         img_byte_arr.seek(0)
         
         # Upload processed image to MinIO

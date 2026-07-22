@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 function Waterpass({ onLevelChange }) {
   const [isLevel, setIsLevel] = useState(false);
   const [beta, setBeta] = useState(0);
+  const [gamma, setGamma] = useState(0);
   const [permissionGranted, setPermissionGranted] = useState(false);
   const [needsPermission, setNeedsPermission] = useState(false);
 
@@ -46,12 +47,15 @@ function Waterpass({ onLevelChange }) {
   };
 
   const handleOrientation = (event) => {
-    if (event.beta !== null) {
+    if (event.beta !== null && event.gamma !== null) {
       const betaValue = event.beta;
+      const gammaValue = event.gamma;
       setBeta(betaValue);
+      setGamma(gammaValue);
 
       // Check if device is level (within ±5 degrees of vertical/portrait mode)
-      const level = Math.abs(betaValue - 90) < 5;
+      // and not tilted left/right (gamma near 0 degrees)
+      const level = Math.abs(betaValue - 90) < 5 && Math.abs(gammaValue) < 5;
       setIsLevel(level);
       onLevelChange(level);
     }
@@ -109,16 +113,18 @@ function Waterpass({ onLevelChange }) {
       <div
         style={{
           position: 'absolute',
-          top: '-25px',
+          top: '20px',
           left: '50%',
           transform: 'translateX(-50%)',
           color: '#fff',
           fontSize: '14px',
           fontWeight: 'bold',
-          textShadow: '1px 1px 2px rgba(0,0,0,0.8)'
+          textShadow: '1px 1px 2px rgba(0,0,0,0.8)',
+          textAlign: 'center',
+          whiteSpace: 'nowrap'
         }}
       >
-        {isLevel ? 'LEVEL' : `${beta.toFixed(1)}°`}
+        {isLevel ? 'LEVEL' : `Pitch: ${beta.toFixed(1)}° | Roll: ${gamma.toFixed(1)}°`}
       </div>
     </div>
   );

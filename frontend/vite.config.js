@@ -38,6 +38,7 @@ export default defineConfig({
     proxy: {
       '/api': 'http://localhost:3000',
       '/internal': 'http://localhost:3000',
+      '/viewer': 'http://localhost:3000',
     }
   }
 });

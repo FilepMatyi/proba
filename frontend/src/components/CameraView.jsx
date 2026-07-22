@@ -43,22 +43,34 @@ function CameraView({ isLevel, onCapture, currentIndex, totalPhotos }) {
       const video = videoRef.current;
       const canvas = canvasRef.current;
 
-      // Target size instead of full sensor resolution — scale during the draw itself
-      const TARGET_WIDTH = 1280;
-      const TARGET_HEIGHT = 720;
+      // Use actual video dimensions to preserve the camera's native aspect ratio.
+      // This prevents the car from appearing stretched or squished.
+      const videoWidth = video.videoWidth;
+      const videoHeight = video.videoHeight;
 
-      canvas.width = TARGET_WIDTH;
-      canvas.height = TARGET_HEIGHT;
+      // Scale to max 1920px on the longest side while preserving aspect ratio
+      const MAX_DIMENSION = 1920;
+      let targetWidth = videoWidth;
+      let targetHeight = videoHeight;
+
+      if (targetWidth > MAX_DIMENSION || targetHeight > MAX_DIMENSION) {
+        const scale = MAX_DIMENSION / Math.max(targetWidth, targetHeight);
+        targetWidth = Math.round(targetWidth * scale);
+        targetHeight = Math.round(targetHeight * scale);
+      }
+
+      canvas.width = targetWidth;
+      canvas.height = targetHeight;
 
       const ctx = canvas.getContext('2d');
-      ctx.drawImage(video, 0, 0, TARGET_WIDTH, TARGET_HEIGHT);
+      ctx.drawImage(video, 0, 0, targetWidth, targetHeight);
 
       canvas.toBlob((blob) => {
         if (!blob) {
           throw new Error("Canvas toBlob failed - Blob is null");
         }
         onCapture(blob);
-      }, 'image/jpeg', 0.8);
+      }, 'image/jpeg', 0.92);
     } catch (error) {
       alert(`Capture Error: ${error.message}`);
       console.error('Capture error:', error);
@@ -134,8 +146,8 @@ function CameraView({ isLevel, onCapture, currentIndex, totalPhotos }) {
           width: '80px',
           height: '80px',
           borderRadius: '50%',
-          backgroundColor: isLevel ? '#fff' : 'rgba(255,255,255,0.3)',
-          border: isLevel ? '4px solid #fff' : '4px solid rgba(255,255,255,0.5)',
+          backgroundColor: isLevel ? '#4CAF50' : 'rgba(255,255,255,0.3)',
+          border: isLevel ? '4px solid #4CAF50' : '4px solid rgba(255,255,255,0.5)',
           cursor: isLevel ? 'pointer' : 'not-allowed',
           transition: 'all 0.2s'
         }}

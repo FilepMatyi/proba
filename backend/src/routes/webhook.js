@@ -2,19 +2,6 @@ const express = require('express');
 
 const router = express.Router();
 
-/**
- * Webhook endpoint to receive completion notification from AI worker
- * when all 24 photos are processed for a vehicle.
- * 
- * Payload format:
- * {
- *   "vehicleId": "Lancer-16",
- *   "status": "completed",
- *   "processedImages": ["Lancer-16/processed-1-uuid.jpg", ...],
- *   "viewerUrl": "http://localhost:3000/viewer/Lancer-16",
- *   "iframeCode": "<iframe src=\"...\" ...></iframe>"
- * }
- */
 router.post('/webhook', async (req, res) => {
   try {
     const { vehicleId, status, processedImages, viewerUrl, iframeCode } = req.body;
