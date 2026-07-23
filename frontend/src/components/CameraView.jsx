@@ -44,7 +44,6 @@ function CameraView({ isLevel, onCapture, currentIndex, totalPhotos }) {
       const canvas = canvasRef.current;
 
       // Use actual video dimensions to preserve the camera's native aspect ratio.
-      // This prevents the car from appearing stretched or squished.
       const videoWidth = video.videoWidth;
       const videoHeight = video.videoHeight;
 
@@ -91,6 +90,27 @@ function CameraView({ isLevel, onCapture, currentIndex, totalPhotos }) {
         }}
       />
 
+      {/* Distance advisory — static, always visible */}
+      <div style={{
+        position: 'absolute',
+        top: '75px',
+        left: '50%',
+        transform: 'translateX(-50%)',
+        backgroundColor: 'rgba(0, 0, 0, 0.55)',
+        color: '#fff',
+        fontSize: '13px',
+        fontWeight: '500',
+        padding: '6px 16px',
+        borderRadius: '20px',
+        whiteSpace: 'nowrap',
+        textAlign: 'center',
+        zIndex: 100,
+        backdropFilter: 'blur(6px)',
+        letterSpacing: '0.01em',
+      }}>
+        📏 Állj 3–4 méterre az autótól
+      </div>
+
       {/* Car silhouette overlay */}
       <svg
         viewBox="0 0 200 100"
@@ -119,7 +139,7 @@ function CameraView({ isLevel, onCapture, currentIndex, totalPhotos }) {
       <div
         style={{
           position: 'absolute',
-          top: '60px',
+          top: '120px',
           left: '50%',
           transform: 'translateX(-50%)',
           color: '#fff',
