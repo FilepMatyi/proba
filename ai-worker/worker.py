@@ -53,7 +53,7 @@ def process_photo(job_data):
         response.release_conn()
         
         # Remove background
-        vehicle_image = remove_background(image_bytes)
+        vehicle_image = remove_background(image_bytes, photo_index=photo_index)
         
         # Create studio composition
         studio_image = create_studio_image(vehicle_image)
