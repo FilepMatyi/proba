@@ -28,18 +28,18 @@ BG_FLOOR = (218, 220, 226)
 # HELPERS
 # ═══════════════════════════════════════════════════════════════════════
 
-def _find_wheel_bottom(alpha_arr):
+def _find_wheel_bottom(alpha_arr, car_w):
     """
     Scan the alpha channel from bottom to top and return the Y coordinate
-    of the first row that has ≥ 20 consecutive solid pixels (alpha > 100).
-    This is the wheel–ground contact line, not noise or a stray pixel.
-
-    Falls back to the bounding-box bottom if nothing is found.
+    of the first row that has a solid, wide run of pixels.
+    By using alpha > 200, we ignore soft shadows left by rembg.
+    By requiring a run of at least 5% of car width, we ignore small noise.
     """
     h, w = alpha_arr.shape
+    min_run = max(int(car_w * 0.05), 10)
 
     for y in range(h - 1, -1, -1):
-        row = (alpha_arr[y] > 100).astype(np.int8)
+        row = (alpha_arr[y] > 200).astype(np.int8)
         # Efficient longest-run calculation using diff
         padded = np.concatenate([[0], row, [0]])
         diffs = np.diff(padded)
@@ -47,7 +47,7 @@ def _find_wheel_bottom(alpha_arr):
         ends   = np.where(diffs == -1)[0]
         if len(starts) > 0:
             max_run = int((ends - starts).max())
-            if max_run >= 20:
+            if max_run >= min_run:
                 return y
 
     # Fallback
@@ -55,22 +55,47 @@ def _find_wheel_bottom(alpha_arr):
 
 
 def _make_background(cw, ch, ground_y):
-    """Paint the infinity-cove studio gradient."""
+    """Paint a premium radial-spotlight studio gradient."""
     canvas = Image.new('RGB', (cw, ch), BG_TOP)
     draw   = ImageDraw.Draw(canvas)
 
-    for y in range(ch):
-        if y <= ground_y:
-            t = y / max(ground_y, 1)
-            r = int(BG_TOP[0] + (BG_FLOOR[0] - BG_TOP[0]) * t * 0.35)
-            g = int(BG_TOP[1] + (BG_FLOOR[1] - BG_TOP[1]) * t * 0.35)
-            b = int(BG_TOP[2] + (BG_FLOOR[2] - BG_TOP[2]) * t * 0.35)
-        else:
-            t = (y - ground_y) / max(ch - ground_y, 1)
-            r = int(BG_FLOOR[0] - 22 * t)
-            g = int(BG_FLOOR[1] - 22 * t)
-            b = int(BG_FLOOR[2] - 24 * t)
+    # Paint floor gradient first
+    for y in range(ground_y, ch):
+        t = (y - ground_y) / max(ch - ground_y, 1)
+        r = int(BG_FLOOR[0] - 22 * t)
+        g = int(BG_FLOOR[1] - 22 * t)
+        b = int(BG_FLOOR[2] - 24 * t)
         draw.line([(0, y), (cw, y)], fill=(max(0, r), max(0, g), max(0, b)))
+        
+    # Paint top background (radial spotlight behind the car)
+    # Fast approach using numpy array
+    x = np.linspace(0, cw, cw)
+    y = np.linspace(0, ground_y, ground_y)
+    X, Y = np.meshgrid(x, y)
+    
+    # Center of spotlight
+    cx, cy = cw / 2, ground_y * 0.6
+    
+    # Distance from center
+    dist = np.sqrt((X - cx)**2 + (Y - cy)**2)
+    max_dist = max(cw, ground_y)
+    
+    # Create soft spotlight effect
+    intensity = np.clip(1.0 - (dist / max_dist) * 1.5, 0, 1)
+    
+    # Base color is BG_TOP, center is brighter
+    r = BG_TOP[0] + intensity * 21
+    g = BG_TOP[1] + intensity * 19
+    b = BG_TOP[2] + intensity * 15
+    
+    # Build RGB array
+    bg_arr = np.zeros((ground_y, cw, 3), dtype=np.uint8)
+    bg_arr[:,:,0] = r
+    bg_arr[:,:,1] = g
+    bg_arr[:,:,2] = b
+    
+    top_img = Image.fromarray(bg_arr, 'RGB')
+    canvas.paste(top_img, (0,0))
 
     return canvas
 
@@ -207,13 +232,18 @@ def create_studio_image(vehicle_image):
     # ── Scale car ──
     vw, vh = vehicle_image.size
     target_h = int(ch * CAR_HEIGHT_FILL)
-    scale = target_h / vh
+    
+    # Ensure the car width doesn't exceed 90% of the canvas width
+    max_w = int(cw * 0.90)
+    scale = min(target_h / vh, max_w / vw)
+    
     target_w = int(vw * scale)
+    target_h = int(vh * scale)
     vehicle_scaled = vehicle_image.resize((target_w, target_h), Image.LANCZOS)
 
     # ── Find the actual wheel-bottom row ──
     alpha_arr = np.array(vehicle_scaled)[:, :, 3]
-    wheel_bottom_local = _find_wheel_bottom(alpha_arr)
+    wheel_bottom_local = _find_wheel_bottom(alpha_arr, target_w)
     # How many pixels of "dead space" below the wheels?
     bottom_gap = target_h - 1 - wheel_bottom_local
 
