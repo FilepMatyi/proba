@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 
-function Waterpass({ onLevelChange }) {
+function Waterpass({ onLevelChange, onHeadingChange }) {
   const [isLevel, setIsLevel] = useState(false);
   const [beta, setBeta] = useState(0);
   const [gamma, setGamma] = useState(0);
@@ -53,11 +53,24 @@ function Waterpass({ onLevelChange }) {
       setBeta(betaValue);
       setGamma(gammaValue);
 
-      // Check if device is level (within ±5 degrees of vertical/portrait mode)
-      // and not tilted left/right (gamma near 0 degrees)
+      // Check if device is level
       const level = Math.abs(betaValue - 90) < 5 && Math.abs(gammaValue) < 5;
       setIsLevel(level);
-      onLevelChange(level);
+      if (onLevelChange) onLevelChange(level);
+
+      // Pass heading for auto-capture
+      let heading = null;
+      if (event.webkitCompassHeading !== undefined) {
+        heading = event.webkitCompassHeading;
+      } else if (event.alpha !== null) {
+        // Standard alpha is counter-clockwise, we just need the raw value
+        // to track relative rotation. We map it to 0-360 just in case.
+        heading = (360 - event.alpha) % 360;
+      }
+
+      if (heading !== null && onHeadingChange) {
+        onHeadingChange(heading);
+      }
     }
   };
 

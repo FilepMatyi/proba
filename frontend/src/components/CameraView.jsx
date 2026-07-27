@@ -1,37 +1,104 @@
 import { useEffect, useRef, useState } from 'react';
 
-function CameraView({ isLevel, onCapture, currentIndex, totalPhotos }) {
+function CameraView({ isLevel, onCapture, onRetake, autoCaptureSignal, currentIndex, totalPhotos }) {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const [stream, setStream] = useState(null);
+  const [videoDevices, setVideoDevices] = useState([]);
+  const [activeDeviceIndex, setActiveDeviceIndex] = useState(0);
+  const [lastPhotoUrl, setLastPhotoUrl] = useState(null);
+  const [flash, setFlash] = useState(false);
+
+  // Watch for auto-capture signal
+  useEffect(() => {
+    if (autoCaptureSignal > 0) {
+      handleCapture();
+    }
+  }, [autoCaptureSignal]);
 
   useEffect(() => {
-    startCamera();
-
-    return () => {
-      if (stream) {
-        stream.getTracks().forEach(track => track.stop());
-      }
-    };
+    initCameras();
+    return () => stopCurrentStream();
   }, []);
 
-  const startCamera = async () => {
-    try {
-      const mediaStream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: 'environment',
-          width: { ideal: 1920 },
-          height: { ideal: 1080 }
-        }
-      });
+  const stopCurrentStream = () => {
+    if (videoRef.current && videoRef.current.srcObject) {
+      videoRef.current.srcObject.getTracks().forEach(track => track.stop());
+    }
+  };
 
+  const initCameras = async () => {
+    try {
+      // First request basic environment camera to get permissions
+      // which allows enumerateDevices to see labels.
+      let mediaStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment' }
+      });
+      
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const vDevices = devices.filter(d => d.kind === 'videoinput');
+      
+      // Try to filter out front cameras, keep rear/ultra-wide ones
+      let rearCameras = vDevices.filter(d => 
+        !d.label.toLowerCase().includes('front') && 
+        !d.label.toLowerCase().includes('user')
+      );
+      
+      // Fallback if filtering removed everything
+      if (rearCameras.length === 0) {
+        rearCameras = vDevices;
+      }
+      
+      setVideoDevices(rearCameras);
+      
+      // Stop the initial stream as we will start a specific device stream
+      mediaStream.getTracks().forEach(track => track.stop());
+      
+      if (rearCameras.length > 0) {
+        startCamera(rearCameras[0].deviceId);
+      } else {
+        // Ultimate fallback
+        startCamera(null);
+      }
+    } catch (error) {
+      console.error('Camera init error:', error);
+      // Fallback to default environment camera
+      startCamera(null);
+    }
+  };
+
+  const startCamera = async (deviceId) => {
+    stopCurrentStream();
+    
+    const constraints = {
+      video: {
+        width: { ideal: 1920 },
+        height: { ideal: 1080 }
+      }
+    };
+    
+    if (deviceId) {
+      constraints.video.deviceId = { exact: deviceId };
+    } else {
+      constraints.video.facingMode = 'environment';
+    }
+
+    try {
+      const mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
       setStream(mediaStream);
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream;
       }
     } catch (error) {
-      console.error('Camera access error:', error);
+      console.error('Camera start error:', error);
     }
+  };
+
+  const switchCamera = () => {
+    if (videoDevices.length <= 1) return;
+    const nextIndex = (activeDeviceIndex + 1) % videoDevices.length;
+    setActiveDeviceIndex(nextIndex);
+    startCamera(videoDevices[nextIndex].deviceId);
   };
 
   const handleCapture = () => {
@@ -43,11 +110,9 @@ function CameraView({ isLevel, onCapture, currentIndex, totalPhotos }) {
       const video = videoRef.current;
       const canvas = canvasRef.current;
 
-      // Use actual video dimensions to preserve the camera's native aspect ratio.
       const videoWidth = video.videoWidth;
       const videoHeight = video.videoHeight;
 
-      // Scale to max 1920px on the longest side while preserving aspect ratio
       const MAX_DIMENSION = 1920;
       let targetWidth = videoWidth;
       let targetHeight = videoHeight;
@@ -68,16 +133,42 @@ function CameraView({ isLevel, onCapture, currentIndex, totalPhotos }) {
         if (!blob) {
           throw new Error("Canvas toBlob failed - Blob is null");
         }
+        
+        // Show flash animation & vibrate
+        setFlash(true);
+        setTimeout(() => setFlash(false), 300);
+        if (navigator.vibrate) navigator.vibrate(50);
+        
+        // Create object URL for preview
+        const url = URL.createObjectURL(blob);
+        setLastPhotoUrl(url);
+        
         onCapture(blob);
-      }, 'image/jpeg', 0.92);
+      }, 'image/jpeg', 0.97);
     } catch (error) {
       alert(`Capture Error: ${error.message}`);
       console.error('Capture error:', error);
     }
   };
 
+  const handleRetakeClick = () => {
+    setLastPhotoUrl(null);
+    if (onRetake) onRetake();
+  };
+
   return (
     <div style={{ position: 'relative', width: '100%', height: '100dvh', touchAction: 'none' }}>
+      {/* Flash overlay */}
+      <div style={{
+        position: 'absolute',
+        top: 0, left: 0, right: 0, bottom: 0,
+        backgroundColor: 'white',
+        opacity: flash ? 0.8 : 0,
+        pointerEvents: 'none',
+        transition: 'opacity 0.1s',
+        zIndex: 200
+      }} />
+
       <video
         ref={videoRef}
         autoPlay
@@ -90,7 +181,6 @@ function CameraView({ isLevel, onCapture, currentIndex, totalPhotos }) {
         }}
       />
 
-      {/* Distance advisory — static, always visible */}
       <div style={{
         position: 'absolute',
         top: '75px',
@@ -110,6 +200,34 @@ function CameraView({ isLevel, onCapture, currentIndex, totalPhotos }) {
       }}>
         📏 Állj 3–4 méterre az autótól
       </div>
+      
+      {/* Camera Switcher Button */}
+      {videoDevices.length > 1 && (
+        <button
+          onClick={switchCamera}
+          style={{
+            position: 'absolute',
+            top: '70px',
+            right: '20px',
+            width: '44px',
+            height: '44px',
+            borderRadius: '50%',
+            backgroundColor: 'rgba(0,0,0,0.5)',
+            border: '2px solid rgba(255,255,255,0.3)',
+            color: 'white',
+            fontSize: '18px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            zIndex: 100,
+            backdropFilter: 'blur(5px)'
+          }}
+          title="Kamera váltás"
+        >
+          🔄
+        </button>
+      )}
 
       {/* Car silhouette overlay */}
       <svg
@@ -151,10 +269,10 @@ function CameraView({ isLevel, onCapture, currentIndex, totalPhotos }) {
           borderRadius: '20px'
         }}
       >
-        {currentIndex + 1} / {totalPhotos}
+        {currentIndex === 0 ? "FOTÓZZ EGYET INDULÁSHOZ" : `${currentIndex} / ${totalPhotos}`}
       </div>
 
-      {/* Shutter button */}
+      {/* Shutter button (Only show for first photo, then hide or disable, actually keep it for manual override) */}
       <button
         onClick={handleCapture}
         disabled={!isLevel}
@@ -169,9 +287,53 @@ function CameraView({ isLevel, onCapture, currentIndex, totalPhotos }) {
           backgroundColor: isLevel ? '#4CAF50' : 'rgba(255,255,255,0.3)',
           border: isLevel ? '4px solid #4CAF50' : '4px solid rgba(255,255,255,0.5)',
           cursor: isLevel ? 'pointer' : 'not-allowed',
-          transition: 'all 0.2s'
+          transition: 'all 0.2s',
+          zIndex: 100
         }}
       />
+
+      {/* Last photo preview and Retake button */}
+      {lastPhotoUrl && currentIndex > 0 && (
+        <div style={{
+          position: 'absolute',
+          bottom: '40px',
+          left: '20px',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: '8px',
+          zIndex: 100
+        }}>
+          <img 
+            src={lastPhotoUrl} 
+            alt="Utolsó fotó" 
+            style={{
+              width: '60px', 
+              height: '80px', 
+              objectFit: 'cover', 
+              borderRadius: '8px',
+              border: '2px solid white',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.5)'
+            }} 
+          />
+          <button 
+            onClick={handleRetakeClick}
+            style={{
+              backgroundColor: 'rgba(244, 67, 54, 0.9)',
+              color: 'white',
+              border: 'none',
+              borderRadius: '12px',
+              padding: '6px 12px',
+              fontSize: '12px',
+              fontWeight: 'bold',
+              cursor: 'pointer',
+              backdropFilter: 'blur(4px)'
+            }}
+          >
+            ↻ Újra
+          </button>
+        </div>
+      )}
 
       <canvas ref={canvasRef} style={{ display: 'none' }} />
     </div>

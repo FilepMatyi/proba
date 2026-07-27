@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import CameraView from './components/CameraView';
 import Waterpass from './components/Waterpass';
 import ProgressBar from './components/ProgressBar';
 import UploadQueue from './api/uploader';
 
 const TOTAL_PHOTOS = 24;
+const ANGLE_PER_PHOTO = 360 / TOTAL_PHOTOS;
 
 function App() {
   const [vehicleId, setVehicleId] = useState('');
@@ -12,15 +13,30 @@ function App() {
   const [isLevel, setIsLevel] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [uploadedCount, setUploadedCount] = useState(0);
+  const [autoCaptureSignal, setAutoCaptureSignal] = useState(0);
   const [uploadQueue] = useState(() => new UploadQueue((photoIndex) => {
     setUploadedCount(prev => Math.max(prev, photoIndex));
   }));
+
+  // Gyroscope tracking refs
+  const lastHeadingRef = useRef(null);
+  const accumulatedRotationRef = useRef(0);
+  const currentIndexRef = useRef(0);
+  const isLevelRef = useRef(false);
+
+  // Sync refs for the gyroscope callback
+  useEffect(() => {
+    currentIndexRef.current = currentIndex;
+    isLevelRef.current = isLevel;
+  }, [currentIndex, isLevel]);
 
   const handleStart = () => {
     if (vehicleId.trim()) {
       setIsCapturing(true);
       setCurrentIndex(0);
       setUploadedCount(0);
+      lastHeadingRef.current = null;
+      accumulatedRotationRef.current = 0;
     }
   };
 
@@ -31,9 +47,56 @@ function App() {
     }
   };
 
-  const handleComplete = () => {
-    // All photos captured, show completion message
-    alert(`All ${TOTAL_PHOTOS} photos captured! Processing in progress.`);
+  const handleRetake = () => {
+    // If they want to retake, we just decrement currentIndex.
+    // The next capture will overwrite the photoIndex on the backend.
+    if (currentIndex > 0) {
+      setCurrentIndex(prev => prev - 1);
+      // Adjust accumulated rotation back by one step so auto-capture waits
+      const currentRot = accumulatedRotationRef.current;
+      const sign = currentRot >= 0 ? 1 : -1;
+      accumulatedRotationRef.current = currentRot - (sign * ANGLE_PER_PHOTO);
+    }
+  };
+
+  function getAngleDiff(a, b) {
+    let diff = (a - b) % 360;
+    if (diff < -180) diff += 360;
+    if (diff > 180) diff -= 360;
+    return diff;
+  }
+
+  const handleHeadingChange = (heading) => {
+    if (!isCapturing || currentIndexRef.current >= TOTAL_PHOTOS) return;
+
+    if (lastHeadingRef.current === null) {
+      lastHeadingRef.current = heading;
+      return;
+    }
+
+    const diff = getAngleDiff(heading, lastHeadingRef.current);
+    lastHeadingRef.current = heading;
+    
+    // Only accumulate if the phone is relatively level to avoid wild jumps
+    if (isLevelRef.current) {
+      accumulatedRotationRef.current += diff;
+      
+      const absRotation = Math.abs(accumulatedRotationRef.current);
+      const targetRotation = currentIndexRef.current * ANGLE_PER_PHOTO;
+      
+      // If we've rotated enough for the next photo, and the phone is level, TRIGGER!
+      // But only if we already took the first photo manually (index > 0) or if they just spun anyway.
+      // Wait, let's let them take the first photo manually to set the starting position.
+      if (currentIndexRef.current > 0 && absRotation >= targetRotation) {
+        // Trigger auto capture
+        setAutoCaptureSignal(prev => prev + 1);
+        
+        // We artificially bump the accumulated rotation slightly past the target 
+        // to prevent multiple triggers in the same spot due to noise.
+        // Actually, currentIndex will increment, so targetRotation will jump by 15.
+        // That naturally prevents double triggers.
+      }
+    }
   };
 
   if (isCapturing) {
@@ -62,7 +125,6 @@ function App() {
         );
       }
 
-      // uploadedCount még nem érte el a 24-et — ez a valódi "processing" képernyő
       return (
         <div style={{
           display: 'flex', flexDirection: 'column', alignItems: 'center',
@@ -78,10 +140,15 @@ function App() {
 
     return (
       <div style={{ height: '100dvh', width: '100vw', overflow: 'hidden' }}>
-        <Waterpass onLevelChange={setIsLevel} />
+        <Waterpass 
+          onLevelChange={setIsLevel} 
+          onHeadingChange={handleHeadingChange}
+        />
         <CameraView
           isLevel={isLevel}
           onCapture={handleCapture}
+          onRetake={handleRetake}
+          autoCaptureSignal={autoCaptureSignal}
           currentIndex={currentIndex}
           totalPhotos={TOTAL_PHOTOS}
         />
