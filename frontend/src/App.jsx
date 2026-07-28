@@ -1,13 +1,16 @@
 import { useState, useRef, useEffect } from 'react';
+import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom';
 import CameraView from './components/CameraView';
 import Waterpass from './components/Waterpass';
 import ProgressBar from './components/ProgressBar';
 import UploadQueue from './api/uploader';
+import Dashboard from './components/Dashboard';
 
-const TOTAL_PHOTOS = 24;
+const TOTAL_PHOTOS = 36;
 const ANGLE_PER_PHOTO = 360 / TOTAL_PHOTOS;
 
-function App() {
+function CaptureFlow() {
+  const navigate = useNavigate();
   const [vehicleId, setVehicleId] = useState('');
   const [isCapturing, setIsCapturing] = useState(false);
   const [isLevel, setIsLevel] = useState(false);
@@ -207,7 +210,35 @@ function App() {
       >
         Start Photography
       </button>
+
+      <button
+        onClick={() => navigate('/dashboard')}
+        style={{
+          marginTop: '30px',
+          padding: '10px 20px',
+          fontSize: '14px',
+          backgroundColor: 'transparent',
+          color: '#888',
+          border: '1px solid #444',
+          borderRadius: '10px',
+          cursor: 'pointer',
+          transition: 'all 0.2s'
+        }}
+      >
+        Admin Dashboard
+      </button>
     </div>
+  );
+}
+
+function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<CaptureFlow />} />
+        <Route path="/dashboard" element={<Dashboard />} />
+      </Routes>
+    </BrowserRouter>
   );
 }
 

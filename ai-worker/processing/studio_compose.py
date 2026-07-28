@@ -264,8 +264,8 @@ def create_studio_image(vehicle_image):
     canvas.paste(vehicle_scaled, (car_x, car_y), vehicle_scaled)
 
     # ── Contrast boost for punch ──
-    canvas = ImageEnhance.Contrast(canvas).enhance(1.05)
-    canvas = ImageEnhance.Sharpness(canvas).enhance(1.08)
+    canvas = ImageEnhance.Contrast(canvas).enhance(1.08)
+    canvas = ImageEnhance.Sharpness(canvas).enhance(1.20)
 
     # ── Debug overlay ──
     if DEBUG_OVERLAY:

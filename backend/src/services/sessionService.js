@@ -67,7 +67,7 @@ async function getOrCreateSession(vehicleId) {
         dealershipId: dealership.id,
         status: 'processing',
         processedFrames: 0,
-        totalFrames: 24,
+        totalFrames: 36,
       },
     });
     console.log(`Munkamenet létrehozva: ${vehicleId}`);

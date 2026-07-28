@@ -37,6 +37,13 @@ router.get('/viewer/:vehicleId', async (req, res) => {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>360° Vehicle Viewer - ${vehicleId}</title>
+  
+  <meta property="og:title" content="360° Vehicle Viewer - ${vehicleId}">
+  <meta property="og:description" content="Forgasd el az autót és nézd meg minden szögből!">
+  <meta property="og:image" content="${imageUrls.length > 0 ? imageUrls[0] : ''}">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
+
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
   <style>
@@ -238,6 +245,7 @@ router.get('/viewer/:vehicleId', async (req, res) => {
       <div class="zoom-badge" id="zoomBadge">1.0×</div>
 
       <div class="controls" id="controls">
+        <button id="fullscreenBtn" title="Fullscreen" style="font-size:16px">⛶</button>
         <button id="zoomInBtn"    title="Zoom in">+</button>
         <button id="zoomOutBtn"   title="Zoom out" disabled>−</button>
         <button id="zoomResetBtn" title="Reset" disabled style="font-size:12px">⟲</button>
@@ -257,7 +265,16 @@ router.get('/viewer/:vehicleId', async (req, res) => {
   let isDragging     = false;
   let startX = 0, startY = 0;
   let hasInteracted  = false;
-  const PX_PER_FRAME = 18;
+  const PX_PER_FRAME = 25; // Slower manual rotation for better control
+
+  /* ── Interaction & Inertia State ── */
+  let virtualRotation = 0; // Floating point rotation state
+  let velocity = 0;
+  let lastTimestamp = 0;
+  let lastMouseX = 0;
+  let autoplaySpeed = 0.005; // Nagyon lassú, prémium forgás
+  let isAutoplay = true;
+  let animationFrameId = null;
 
   /* ── Zoom state ── */
   let zoomLevel = 1;
@@ -273,6 +290,7 @@ router.get('/viewer/:vehicleId', async (req, res) => {
   const $loadTxt    = document.getElementById('loadingText');
   const $loadBar    = document.getElementById('loadingBarFill');
   const $badge      = document.getElementById('zoomBadge');
+  const $fullscreen = document.getElementById('fullscreenBtn');
   const $zoomIn     = document.getElementById('zoomInBtn');
   const $zoomOut    = document.getElementById('zoomOutBtn');
   const $zoomReset  = document.getElementById('zoomResetBtn');
@@ -304,11 +322,19 @@ router.get('/viewer/:vehicleId', async (req, res) => {
         }
         $loadTxt.textContent = 'Loading ' + loaded + ' of ' + total;
         $loadBar.style.width = Math.round(loaded / total * 100) + '%';
-        if (loaded === total) { $overlay.style.display = 'none'; showImage(0); }
+        if (loaded === total) { 
+          $overlay.style.display = 'none'; 
+          showImage(0); 
+          startAnimationLoop(); 
+        }
       };
       img.onerror = () => {
         loaded++;
-        if (loaded === total) { $overlay.style.display = 'none'; showImage(0); }
+        if (loaded === total) { 
+          $overlay.style.display = 'none'; 
+          showImage(0); 
+          startAnimationLoop(); 
+        }
       };
       $container.appendChild(img);
     });
@@ -318,10 +344,54 @@ router.get('/viewer/:vehicleId', async (req, res) => {
   function showImage(idx) {
     if (idx < 0) idx = imageUrls.length - 1;
     else if (idx >= imageUrls.length) idx = 0;
+    
+    if (currentIndex === idx) return; // No change
+    
     const imgs = $container.querySelectorAll('img');
     imgs.forEach(im => im.classList.remove('active'));
     if (imgs[idx]) imgs[idx].classList.add('active');
     currentIndex = idx;
+  }
+
+  function setVirtualRotation(val) {
+    virtualRotation = val;
+    // Calculate current frame index based on rotation
+    const numFrames = imageUrls.length;
+    let idx = Math.floor(virtualRotation) % numFrames;
+    if (idx < 0) idx += numFrames;
+    showImage(numFrames - 1 - idx); // Reverse direction so dragging right rotates car left
+  }
+
+  /* ═══════════════ Animation Loop ═══════════════ */
+  function startAnimationLoop() {
+    lastTimestamp = performance.now();
+    animationFrameId = requestAnimationFrame(animationLoop);
+  }
+
+  function animationLoop(timestamp) {
+    const dt = timestamp - lastTimestamp;
+    lastTimestamp = timestamp;
+
+    if (isAutoplay && !isDragging) {
+      // Autoplay: rotate at constant speed
+      setVirtualRotation(virtualRotation + autoplaySpeed * dt);
+    } else if (!isDragging && Math.abs(velocity) > 0.01) {
+      // Inertia: apply velocity and decay
+      setVirtualRotation(virtualRotation + velocity * dt);
+      velocity *= 0.92; // Friction
+    } else if (!isDragging) {
+      velocity = 0;
+    }
+
+    animationFrameId = requestAnimationFrame(animationLoop);
+  }
+
+  function interact() {
+    if (!hasInteracted) { 
+      hasInteracted = true; 
+      $hint.classList.add('hidden'); 
+    }
+    isAutoplay = false; // Stop autoplay on any interaction
   }
 
   /* ═══════════════ Zoom helpers ═══════════════ */
@@ -357,13 +427,24 @@ router.get('/viewer/:vehicleId', async (req, res) => {
   }
 
   function hideHint() {
-    if (!hasInteracted) { hasInteracted = true; $hint.classList.add('hidden'); }
+    interact();
   }
 
-  /* ═══════════════ Zoom controls ═══════════════ */
-  $zoomIn.onclick    = e => { e.stopPropagation(); setZoom(zoomLevel + ZOOM_STEP); };
-  $zoomOut.onclick   = e => { e.stopPropagation(); setZoom(zoomLevel - ZOOM_STEP); };
-  $zoomReset.onclick = e => { e.stopPropagation(); setZoom(1); };
+  /* ═══════════════ Controls ═══════════════ */
+  $fullscreen.onclick = e => {
+    e.stopPropagation(); interact();
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(err => {
+        console.error("Error attempting to enable fullscreen:", err);
+      });
+    } else {
+      document.exitFullscreen();
+    }
+  };
+  
+  $zoomIn.onclick    = e => { e.stopPropagation(); interact(); setZoom(zoomLevel + ZOOM_STEP); };
+  $zoomOut.onclick   = e => { e.stopPropagation(); interact(); setZoom(zoomLevel - ZOOM_STEP); };
+  $zoomReset.onclick = e => { e.stopPropagation(); interact(); setZoom(1); };
 
   /* Scroll wheel */
   $container.addEventListener('wheel', e => {
@@ -375,7 +456,10 @@ router.get('/viewer/:vehicleId', async (req, res) => {
   $container.addEventListener('mousedown', e => {
     if (e.target.closest('.controls')) return;
     isDragging = true; startX = e.clientX; startY = e.clientY;
-    $container.classList.add('grabbing'); hideHint();
+    lastMouseX = e.clientX;
+    lastTimestamp = performance.now();
+    velocity = 0;
+    $container.classList.add('grabbing'); interact();
   });
 
   $container.addEventListener('mousemove', e => {
@@ -386,8 +470,19 @@ router.get('/viewer/:vehicleId', async (req, res) => {
       clampPan(); updateTransform();
       startX = e.clientX; startY = e.clientY;
     } else {
-      const fc = Math.floor((e.clientX - startX) / PX_PER_FRAME);
-      if (fc !== 0) { showImage(currentIndex - fc); startX = e.clientX; }
+      const dt = performance.now() - lastTimestamp;
+      const dx = e.clientX - lastMouseX;
+      
+      // Calculate rotation change (pixels -> frames)
+      const dFrames = dx / PX_PER_FRAME;
+      setVirtualRotation(virtualRotation + dFrames);
+      
+      if (dt > 0) {
+        velocity = dFrames / dt;
+      }
+      
+      lastMouseX = e.clientX;
+      lastTimestamp = performance.now();
     }
   });
 
@@ -406,7 +501,10 @@ router.get('/viewer/:vehicleId', async (req, res) => {
     } else if (e.touches.length === 1) {
       isDragging = true;
       startX = e.touches[0].clientX; startY = e.touches[0].clientY;
-      $container.classList.add('grabbing'); hideHint();
+      lastMouseX = e.touches[0].clientX;
+      lastTimestamp = performance.now();
+      velocity = 0;
+      $container.classList.add('grabbing'); interact();
     }
   });
 
@@ -423,11 +521,21 @@ router.get('/viewer/:vehicleId', async (req, res) => {
         panX += (tx - startX) / zoomLevel;
         panY += (ty - startY) / zoomLevel;
         clampPan(); updateTransform();
+        startX = tx; startY = ty;
       } else {
-        const fc = Math.floor((tx - startX) / PX_PER_FRAME);
-        if (fc !== 0) { showImage(currentIndex - fc); startX = tx; }
+        const dt = performance.now() - lastTimestamp;
+        const dx = tx - lastMouseX;
+        
+        const dFrames = dx / PX_PER_FRAME;
+        setVirtualRotation(virtualRotation + dFrames);
+        
+        if (dt > 0) {
+          velocity = dFrames / dt;
+        }
+        
+        lastMouseX = tx;
+        lastTimestamp = performance.now();
       }
-      startX = tx; startY = ty;
     }
   }, { passive: false });
 
@@ -447,11 +555,11 @@ router.get('/viewer/:vehicleId', async (req, res) => {
   /* ═══════════════ Keyboard ═══════════════ */
   document.addEventListener('keydown', e => {
     switch (e.key) {
-      case 'ArrowLeft':  showImage(currentIndex - 1); hideHint(); break;
-      case 'ArrowRight': showImage(currentIndex + 1); hideHint(); break;
-      case '+': case '=': setZoom(zoomLevel + ZOOM_STEP); break;
-      case '-':            setZoom(zoomLevel - ZOOM_STEP); break;
-      case '0':            setZoom(1); break;
+      case 'ArrowLeft':  interact(); setVirtualRotation(virtualRotation - 1); break;
+      case 'ArrowRight': interact(); setVirtualRotation(virtualRotation + 1); break;
+      case '+': case '=': interact(); setZoom(zoomLevel + ZOOM_STEP); break;
+      case '-':           interact(); setZoom(zoomLevel - ZOOM_STEP); break;
+      case '0':           interact(); setZoom(1); break;
     }
   });
 
@@ -492,6 +600,34 @@ router.get('/viewer/:vehicleId/image/:filename', async (req, res) => {
     console.error('Error proxying image:', error.message);
     res.status(404).json({ error: 'Image not found' });
   }
+});
+
+// ─────────────────────────────────────────────────────────────────────
+// Embed widget JS (returns a script that embeds the viewer)
+// ─────────────────────────────────────────────────────────────────────
+router.get('/embed.js', (req, res) => {
+  res.setHeader('Content-Type', 'application/javascript');
+  const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
+  
+  res.send(`
+(function() {
+  const containers = document.querySelectorAll('div[data-vs360-vehicle]');
+  containers.forEach(container => {
+    const vehicleId = container.getAttribute('data-vs360-vehicle');
+    if (!vehicleId) return;
+    
+    const iframe = document.createElement('iframe');
+    iframe.src = '${baseUrl}/viewer/' + vehicleId;
+    iframe.width = '100%';
+    iframe.style.aspectRatio = '16/9';
+    iframe.style.border = 'none';
+    iframe.style.borderRadius = '14px';
+    iframe.allowFullscreen = true;
+    
+    container.appendChild(iframe);
+  });
+})();
+  `);
 });
 
 module.exports = router;

@@ -7,6 +7,7 @@ const photoRoutes = require('./routes/photos');
 const viewerRoutes = require('./routes/viewer');
 const webhookRoutes = require('./routes/webhook');
 const internalRoutes = require('./routes/internal');
+const sessionsRoutes = require('./routes/sessions');
 
 const app = express();
 
@@ -25,6 +26,7 @@ app.use((req, res, next) => {
 
 app.use('/api', photoRoutes);
 app.use('/api', webhookRoutes);
+app.use('/api', sessionsRoutes);
 app.use('/internal', internalRoutes);
 
 // Serve static frontend files

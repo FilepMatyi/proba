@@ -23,8 +23,8 @@ model VehicleSession {
   dealershipId           Int
   dealership             Dealership @relation(fields: [dealershipId], references: [id])
   status                 String     @default("processing")  // processing, completed, failed
-  processedFrames        Int        @default(0)             // 0-tól 24-ig számol
-  totalFrames            Int        @default(24)
+  processedFrames        Int        @default(0)             // 0-tól 36-ig számol
+  totalFrames            Int        @default(36)
   processedPhotoIndexes  String     @default("[]")           // JSON tömb, duplikáció-védelemhez
   viewerUrl              String?
   createdAt              DateTime   @default(now())
