@@ -1,9 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom';
 import CameraView from './components/CameraView';
-import Waterpass from './components/Waterpass';
 import ProgressBar from './components/ProgressBar';
-import UploadQueue from './api/uploader';
 import Dashboard from './components/Dashboard';
 
 const TOTAL_PHOTOS = 36;
@@ -12,54 +10,50 @@ const ANGLE_PER_PHOTO = 360 / TOTAL_PHOTOS;
 function CaptureFlow() {
   const navigate = useNavigate();
   const [vehicleId, setVehicleId] = useState('');
-  const [isCapturing, setIsCapturing] = useState(false);
-  const [isLevel, setIsLevel] = useState(false);
+  
+  // States: 'HOME' | 'WALKING' | 'UPLOADING' | 'DONE'
+  const [appState, setAppState] = useState('HOME');
+  
   const [currentIndex, setCurrentIndex] = useState(0);
   const [uploadedCount, setUploadedCount] = useState(0);
   const [autoCaptureSignal, setAutoCaptureSignal] = useState(0);
-  const [uploadQueue] = useState(() => new UploadQueue((photoIndex) => {
-    setUploadedCount(prev => Math.max(prev, photoIndex));
-  }));
+  
+  const [capturedBlobs, setCapturedBlobs] = useState([]);
 
   // Gyroscope tracking refs
   const lastHeadingRef = useRef(null);
   const accumulatedRotationRef = useRef(0);
   const currentIndexRef = useRef(0);
-  const isLevelRef = useRef(false);
+  const lastTriggeredSlotRef = useRef(0);
 
-  // Sync refs for the gyroscope callback
   useEffect(() => {
     currentIndexRef.current = currentIndex;
-    isLevelRef.current = isLevel;
-  }, [currentIndex, isLevel]);
+  }, [currentIndex]);
 
   const handleStart = () => {
     if (vehicleId.trim()) {
-      setIsCapturing(true);
+      setAppState('WALKING');
       setCurrentIndex(0);
       setUploadedCount(0);
+      setCapturedBlobs([]);
       lastHeadingRef.current = null;
       accumulatedRotationRef.current = 0;
+      lastTriggeredSlotRef.current = 0;
     }
   };
 
   const handleCapture = (blob) => {
-    if (currentIndex < TOTAL_PHOTOS) {
-      uploadQueue.add(vehicleId, currentIndex + 1, blob);
-      setCurrentIndex(prev => prev + 1);
-    }
-  };
-
-  const handleRetake = () => {
-    // If they want to retake, we just decrement currentIndex.
-    // The next capture will overwrite the photoIndex on the backend.
-    if (currentIndex > 0) {
-      setCurrentIndex(prev => prev - 1);
-      // Adjust accumulated rotation back by one step so auto-capture waits
-      const currentRot = accumulatedRotationRef.current;
-      const sign = currentRot >= 0 ? 1 : -1;
-      accumulatedRotationRef.current = currentRot - (sign * ANGLE_PER_PHOTO);
-    }
+    if (!blob) return;
+    
+    setCapturedBlobs(prev => {
+      const newList = [...prev, blob];
+      if (newList.length >= TOTAL_PHOTOS) {
+        setAppState('UPLOADING');
+      }
+      return newList;
+    });
+    
+    setCurrentIndex(prev => prev + 1);
   };
 
   function getAngleDiff(a, b) {
@@ -69,93 +63,182 @@ function CaptureFlow() {
     return diff;
   }
 
-  const handleHeadingChange = (heading) => {
-    if (!isCapturing || currentIndexRef.current >= TOTAL_PHOTOS) return;
+  // Device orientation listener for continuous walk
+  useEffect(() => {
+    if (appState !== 'WALKING') return;
 
-    if (lastHeadingRef.current === null) {
-      lastHeadingRef.current = heading;
-      return;
-    }
-
-    const diff = getAngleDiff(heading, lastHeadingRef.current);
-    lastHeadingRef.current = heading;
-    
-    // Only accumulate if the phone is relatively level to avoid wild jumps
-    if (isLevelRef.current) {
-      accumulatedRotationRef.current += diff;
-      
-      const absRotation = Math.abs(accumulatedRotationRef.current);
-      const targetRotation = currentIndexRef.current * ANGLE_PER_PHOTO;
-      
-      // If we've rotated enough for the next photo, and the phone is level, TRIGGER!
-      // But only if we already took the first photo manually (index > 0) or if they just spun anyway.
-      // Wait, let's let them take the first photo manually to set the starting position.
-      if (currentIndexRef.current > 0 && absRotation >= targetRotation) {
-        // Trigger auto capture
-        setAutoCaptureSignal(prev => prev + 1);
-        
-        // We artificially bump the accumulated rotation slightly past the target 
-        // to prevent multiple triggers in the same spot due to noise.
-        // Actually, currentIndex will increment, so targetRotation will jump by 15.
-        // That naturally prevents double triggers.
+    const handleOrientation = (event) => {
+      let heading = null;
+      if (event.webkitCompassHeading !== undefined) {
+        heading = event.webkitCompassHeading;
+      } else if (event.alpha !== null) {
+        heading = 360 - event.alpha;
       }
+
+      if (heading === null || currentIndexRef.current >= TOTAL_PHOTOS) return;
+
+      if (lastHeadingRef.current === null) {
+        lastHeadingRef.current = heading;
+        return;
+      }
+
+      const diff = getAngleDiff(heading, lastHeadingRef.current);
+      lastHeadingRef.current = heading;
+      
+      accumulatedRotationRef.current += diff;
+      const absRotation = Math.abs(accumulatedRotationRef.current);
+      
+      const currentSlot = Math.floor(absRotation / ANGLE_PER_PHOTO);
+      
+      // If we manually took the first photo (index > 0) 
+      // and we have crossed into a new 10-degree slot
+      if (currentIndexRef.current > 0 && currentSlot > lastTriggeredSlotRef.current) {
+        lastTriggeredSlotRef.current = currentSlot;
+        setAutoCaptureSignal(prev => prev + 1);
+      }
+    };
+
+    window.addEventListener('deviceorientation', handleOrientation, true);
+    return () => {
+      window.removeEventListener('deviceorientation', handleOrientation, true);
+    };
+  }, [appState]);
+
+  // Sequential uploader effect
+  useEffect(() => {
+    if (appState === 'UPLOADING' && capturedBlobs.length === TOTAL_PHOTOS) {
+      let isCancelled = false;
+
+      const uploadAll = async () => {
+        for (let i = 0; i < TOTAL_PHOTOS; i++) {
+          if (isCancelled) return;
+          
+          let success = false;
+          let retries = 0;
+          
+          while (!success && retries < 3) {
+            try {
+              const formData = new FormData();
+              formData.append('photo', capturedBlobs[i], `frame_${i+1}.jpg`);
+              formData.append('photoIndex', i + 1);
+              formData.append('totalPhotos', TOTAL_PHOTOS);
+
+              const response = await fetch(`/api/vehicles/${vehicleId}/photos`, {
+                method: 'POST',
+                body: formData,
+              });
+
+              if (response.ok) {
+                success = true;
+                setUploadedCount(i + 1);
+              } else {
+                const errorText = await response.text();
+                throw new Error(`Upload failed: ${response.status} ${errorText}`);
+              }
+            } catch (err) {
+              retries++;
+              console.error(`Upload error frame ${i+1}, retry ${retries}...`, err);
+              await new Promise(r => setTimeout(r, 1000)); // wait 1s before retry
+            }
+          }
+          
+          if (!success) {
+            alert('Hálózati hiba miatt megszakadt a feltöltés. Kérlek, zárd be az appot és próbáld újra!');
+            return;
+          }
+        }
+        
+        if (!isCancelled) {
+          setAppState('DONE');
+        }
+      };
+
+      uploadAll();
+
+      return () => { isCancelled = true; };
+    }
+  }, [appState, capturedBlobs, vehicleId]);
+
+  // Request permissions button for iOS
+  const [permissionsGranted, setPermissionsGranted] = useState(false);
+  const requestPermissions = async () => {
+    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+      try {
+        const permission = await DeviceOrientationEvent.requestPermission();
+        if (permission === 'granted') setPermissionsGranted(true);
+      } catch (error) {
+        console.error(error);
+      }
+    } else {
+      setPermissionsGranted(true);
     }
   };
 
-  if (isCapturing) {
-    if (currentIndex >= TOTAL_PHOTOS) {
-      if (uploadedCount >= TOTAL_PHOTOS) {
-        return (
-          <div style={{
-            display: 'flex', flexDirection: 'column', alignItems: 'center',
-            justifyContent: 'center', height: '100dvh', width: '100vw',
-            overflow: 'hidden', backgroundColor: '#000', color: '#fff', padding: '20px'
-          }}>
-            <h2 style={{ color: '#4CAF50' }}>✅ Success!</h2>
-            <p style={{ marginTop: '20px', textAlign: 'center' }}>
-              All 24 photos uploaded successfully!<br />
-              You can now view the 3D model on your computer.
-            </p>
-            <button
-              onClick={() => { setIsCapturing(false); setVehicleId(''); }}
-              style={{ marginTop: '30px', padding: '12px 30px', fontSize: '16px',
-                backgroundColor: '#4CAF50', color: '#fff', border: 'none',
-                borderRadius: '10px', cursor: 'pointer' }}
-            >
-              Start New Vehicle
-            </button>
-          </div>
-        );
-      }
-
-      return (
-        <div style={{
-          display: 'flex', flexDirection: 'column', alignItems: 'center',
-          justifyContent: 'center', height: '100dvh', width: '100vw',
-          overflow: 'hidden', backgroundColor: '#000', color: '#fff'
-        }}>
-          <h2>Processing Photos</h2>
-          <ProgressBar uploadedCount={uploadedCount} totalPhotos={TOTAL_PHOTOS} />
-          <p style={{ marginTop: '20px' }}>Uploading and processing your photos...</p>
-        </div>
-      );
+  useEffect(() => {
+    // Auto-grant for non-iOS devices
+    if (typeof DeviceOrientationEvent === 'undefined' || typeof DeviceOrientationEvent.requestPermission !== 'function') {
+      setPermissionsGranted(true);
     }
+  }, []);
 
+  if (appState === 'DONE') {
+    return (
+      <div style={{
+        display: 'flex', flexDirection: 'column', alignItems: 'center',
+        justifyContent: 'center', height: '100dvh', width: '100vw',
+        overflow: 'hidden', backgroundColor: '#000', color: '#fff', padding: '20px'
+      }}>
+        <h2 style={{ color: '#4CAF50' }}>✅ Sikeres feltöltés!</h2>
+        <p style={{ marginTop: '20px', textAlign: 'center' }}>
+          Mind a {TOTAL_PHOTOS} fotó fel lett töltve!<br />
+          A szerver most feldolgozza az autót.
+        </p>
+        <button
+          onClick={() => navigate('/dashboard')}
+          style={{ marginTop: '30px', padding: '12px 30px', fontSize: '16px',
+            backgroundColor: '#4CAF50', color: '#fff', border: 'none',
+            borderRadius: '10px', cursor: 'pointer' }}
+        >
+          Tovább a Dashboardra
+        </button>
+      </div>
+    );
+  }
+
+  if (appState === 'UPLOADING') {
+    return (
+      <div style={{
+        display: 'flex', flexDirection: 'column', alignItems: 'center',
+        justifyContent: 'center', height: '100dvh', width: '100vw',
+        overflow: 'hidden', backgroundColor: '#000', color: '#fff'
+      }}>
+        <h2>Feltöltés folyamatban</h2>
+        <ProgressBar uploadedCount={uploadedCount} totalPhotos={TOTAL_PHOTOS} />
+        <p style={{ marginTop: '20px', color: '#888' }}>Ne zárd be az alkalmazást, amíg ez be nem fejeződik!</p>
+      </div>
+    );
+  }
+
+  if (appState === 'WALKING') {
     return (
       <div style={{ height: '100dvh', width: '100vw', overflow: 'hidden' }}>
-        <Waterpass 
-          onLevelChange={setIsLevel} 
-          onHeadingChange={handleHeadingChange}
-        />
         <CameraView
-          isLevel={isLevel}
+          isLevel={true} // Always allow capturing in walk mode
           onCapture={handleCapture}
-          onRetake={handleRetake}
           autoCaptureSignal={autoCaptureSignal}
           currentIndex={currentIndex}
           totalPhotos={TOTAL_PHOTOS}
         />
-        <ProgressBar uploadedCount={uploadedCount} totalPhotos={TOTAL_PHOTOS} />
+        {/* Progress indicator during walk */}
+        <div style={{
+          position: 'absolute', bottom: '150px', left: '50%', transform: 'translateX(-50%)',
+          width: '80%', zIndex: 100
+        }}>
+          <div style={{ textAlign: 'center', color: 'white', marginBottom: '10px', fontWeight: 'bold', textShadow: '1px 1px 2px black' }}>
+            Sétálj lassan körbe! ({currentIndex}/{TOTAL_PHOTOS})
+          </div>
+          <ProgressBar uploadedCount={currentIndex} totalPhotos={TOTAL_PHOTOS} />
+        </div>
       </div>
     );
   }
@@ -163,66 +246,54 @@ function CaptureFlow() {
   return (
     <div
       style={{
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        height: '100dvh',
-        width: '100vw',
-        overflow: 'hidden',
-        backgroundColor: '#000',
-        color: '#fff',
-        padding: '20px'
+        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+        height: '100dvh', width: '100vw', overflow: 'hidden', backgroundColor: '#000', color: '#fff', padding: '20px'
       }}
     >
       <h1 style={{ marginBottom: '40px' }}>VehicleShoot 360</h1>
-      <input
-        type="text"
-        value={vehicleId}
-        onChange={(e) => setVehicleId(e.target.value)}
-        placeholder="Enter Vehicle ID (e.g., Lancer-16)"
-        style={{
-          padding: '15px 20px',
-          fontSize: '18px',
-          borderRadius: '10px',
-          border: '2px solid #333',
-          backgroundColor: '#222',
-          color: '#fff',
-          marginBottom: '20px',
-          width: '100%',
-          maxWidth: '300px',
-          textAlign: 'center'
-        }}
-      />
-      <button
-        onClick={handleStart}
-        disabled={!vehicleId.trim()}
-        style={{
-          padding: '15px 40px',
-          fontSize: '18px',
-          backgroundColor: vehicleId.trim() ? '#4CAF50' : '#333',
-          color: '#fff',
-          border: 'none',
-          borderRadius: '10px',
-          cursor: vehicleId.trim() ? 'pointer' : 'not-allowed',
-          transition: 'background-color 0.2s'
-        }}
-      >
-        Start Photography
-      </button>
+      
+      {!permissionsGranted ? (
+        <button onClick={requestPermissions} style={{
+          padding: '15px 40px', fontSize: '18px', backgroundColor: '#2196F3',
+          color: '#fff', border: 'none', borderRadius: '10px', cursor: 'pointer', marginBottom: '20px'
+        }}>
+          Szenzorok Engedélyezése
+        </button>
+      ) : (
+        <>
+          <input
+            type="text"
+            value={vehicleId}
+            onChange={(e) => setVehicleId(e.target.value)}
+            placeholder="Autó azonosító (pl. Lancer-16)"
+            style={{
+              padding: '15px 20px', fontSize: '18px', borderRadius: '10px',
+              border: '2px solid #333', backgroundColor: '#222', color: '#fff',
+              marginBottom: '20px', width: '100%', maxWidth: '300px', textAlign: 'center'
+            }}
+          />
+          <button
+            onClick={handleStart}
+            disabled={!vehicleId.trim()}
+            style={{
+              padding: '15px 40px', fontSize: '18px',
+              backgroundColor: vehicleId.trim() ? '#4CAF50' : '#333',
+              color: '#fff', border: 'none', borderRadius: '10px',
+              cursor: vehicleId.trim() ? 'pointer' : 'not-allowed',
+              transition: 'background-color 0.2s'
+            }}
+          >
+            Fotózás Indítása
+          </button>
+        </>
+      )}
 
       <button
         onClick={() => navigate('/dashboard')}
         style={{
-          marginTop: '30px',
-          padding: '10px 20px',
-          fontSize: '14px',
-          backgroundColor: 'transparent',
-          color: '#888',
-          border: '1px solid #444',
-          borderRadius: '10px',
-          cursor: 'pointer',
-          transition: 'all 0.2s'
+          marginTop: '30px', padding: '10px 20px', fontSize: '14px',
+          backgroundColor: 'transparent', color: '#888', border: '1px solid #444',
+          borderRadius: '10px', cursor: 'pointer', transition: 'all 0.2s'
         }}
       >
         Admin Dashboard

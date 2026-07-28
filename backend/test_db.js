@@ -1,0 +1,1 @@
+const { PrismaClient } = require('@prisma/client'); const prisma = new PrismaClient(); async function main() { const sessions = await prisma.vehicleSession.findMany({orderBy:{createdAt:'desc'}, take: 1, include:{photos:true}}); console.log(JSON.stringify(sessions, null, 2)); } main(); 

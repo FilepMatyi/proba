@@ -3,25 +3,25 @@ import numpy as np
 import os
 
 # ─── Canvas constants ────────────────────────────────────────────────
-# Fixed canvas for ALL 24 frames → no jitter when the viewer flips frames.
+# Fixed canvas for ALL 36 frames → no jitter when the viewer flips frames.
 CANVAS_W = 2400
 CANVAS_H = 1350       # 16:9
 
 # The car is scaled so its height fills this fraction of canvas height.
-# 0.52 leaves generous room for turntable + reflection below and sky above.
-CAR_HEIGHT_FILL = 0.52
+# 0.62 makes the car look significantly larger and more premium.
+CAR_HEIGHT_FILL = 0.62
 
 # Turntable geometry (fraction of canvas)
-PLATFORM_W_FRAC  = 0.68
-PLATFORM_H_FRAC  = 0.075
-PLATFORM_CY_FRAC = 0.79        # center-Y of platform ellipse
+PLATFORM_W_FRAC  = 0.85        # Wider turntable base
+PLATFORM_H_FRAC  = 0.085       # Perspective matched height
+PLATFORM_CY_FRAC = 0.82        # Lowered to make room for larger car
 
 # Debug overlay — set DEBUG_OVERLAY=true to draw alignment guides
 DEBUG_OVERLAY = os.getenv('DEBUG_OVERLAY', 'false').lower() == 'true'
 
 # Background gradient
-BG_TOP   = (234, 236, 240)
-BG_FLOOR = (218, 220, 226)
+BG_TOP   = (225, 227, 232)     # Slightly darker/moodier top
+BG_FLOOR = (210, 212, 218)     # Slightly darker floor
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -162,9 +162,9 @@ def _draw_shadow(canvas, cw, car_cx, sit_y, car_w, car_h):
     sd = ImageDraw.Draw(shadow)
 
     for (frac_w, frac_h, alpha) in [
-        (0.68, 0.020, 58),   # contact
-        (0.80, 0.040, 30),   # mid
-        (0.92, 0.065, 14),   # ambient
+        (0.70, 0.025, 90),   # contact - darker
+        (0.85, 0.050, 45),   # mid
+        (0.95, 0.080, 20),   # ambient - wider
     ]:
         sw = int(car_w * frac_w)
         sh = max(int(car_h * frac_h), 4)
@@ -172,15 +172,21 @@ def _draw_shadow(canvas, cw, car_cx, sit_y, car_w, car_h):
                     car_cx + sw//2, sit_y + sh//2],
                    fill=(0, 0, 0, alpha))
 
-    shadow = shadow.filter(ImageFilter.GaussianBlur(radius=15))
+    shadow = shadow.filter(ImageFilter.GaussianBlur(radius=20))
     canvas.paste(shadow, (0, 0), shadow)
 
 
-def _draw_reflection(canvas, vehicle, car_x, sit_y):
+def _draw_reflection(canvas, vehicle, car_x, sit_y, wheel_bottom_local):
     """Draw faded floor reflection below the turntable."""
-    refl = ImageOps.flip(vehicle)
+    rw, rh = vehicle.size
+    
+    # Crop off any empty space or noise BELOW the actual wheels before flipping
+    # so the tires in the reflection perfectly touch the real tires.
+    clean_vehicle = vehicle.crop((0, 0, rw, min(rh, wheel_bottom_local)))
+    refl = ImageOps.flip(clean_vehicle)
+    
     rw, rh = refl.size
-    crop_h = int(rh * 0.25)
+    crop_h = int(rh * 0.35) # Show more reflection
     if crop_h < 2:
         return
     refl = refl.crop((0, 0, rw, crop_h))
@@ -188,14 +194,16 @@ def _draw_reflection(canvas, vehicle, car_x, sit_y):
     fade = Image.new('L', (rw, crop_h), 0)
     fd   = ImageDraw.Draw(fade)
     for y in range(crop_h):
-        fd.line([(0, y), (rw, y)], fill=int(20 * (1 - y / crop_h)))
+        # Stronger reflection fade
+        fd.line([(0, y), (rw, y)], fill=int(30 * (1 - y / crop_h)))
 
     if refl.mode == 'RGBA':
         r, g, b, a = refl.split()
         a = ImageChops.multiply(a, fade)
         refl = Image.merge('RGBA', (r, g, b, a))
 
-    canvas.paste(refl, (car_x, sit_y + 5), refl)
+    # Paste exactly at sit_y so tires touch
+    canvas.paste(refl, (car_x, sit_y), refl)
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -258,7 +266,7 @@ def create_studio_image(vehicle_image):
 
     # ── Assemble canvas ──
     canvas = _make_background(cw, ch, plat_top_y)
-    _draw_reflection(canvas, vehicle_scaled, car_x, plat_top_y)
+    _draw_reflection(canvas, vehicle_scaled, car_x, plat_top_y, wheel_bottom_local)
     _draw_turntable(canvas, cw, ch)
     _draw_shadow(canvas, cw, car_cx, plat_top_y, target_w, target_h)
     canvas.paste(vehicle_scaled, (car_x, car_y), vehicle_scaled)

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
-function CameraView({ isLevel, onCapture, onRetake, autoCaptureSignal, currentIndex, totalPhotos }) {
+function CameraView({ isLevel, onCapture, autoCaptureSignal, currentIndex, totalPhotos }) {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const [stream, setStream] = useState(null);
@@ -151,10 +151,7 @@ function CameraView({ isLevel, onCapture, onRetake, autoCaptureSignal, currentIn
     }
   };
 
-  const handleRetakeClick = () => {
-    setLastPhotoUrl(null);
-    if (onRetake) onRetake();
-  };
+  // Remove retake logic as we don't allow retakes during continuous walk
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100dvh', touchAction: 'none' }}>
@@ -198,7 +195,7 @@ function CameraView({ isLevel, onCapture, onRetake, autoCaptureSignal, currentIn
         backdropFilter: 'blur(6px)',
         letterSpacing: '0.01em',
       }}>
-        📏 Állj 3–4 méterre az autótól
+        Sétálj körbe egyenletes tempóban!
       </div>
       
       {/* Camera Switcher Button */}
@@ -272,67 +269,27 @@ function CameraView({ isLevel, onCapture, onRetake, autoCaptureSignal, currentIn
         {currentIndex === 0 ? "FOTÓZZ EGYET INDULÁSHOZ" : `${currentIndex} / ${totalPhotos}`}
       </div>
 
-      {/* Shutter button (Only show for first photo, then hide or disable, actually keep it for manual override) */}
-      <button
-        onClick={handleCapture}
-        disabled={!isLevel}
-        style={{
-          position: 'absolute',
-          bottom: '40px',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          width: '80px',
-          height: '80px',
-          borderRadius: '50%',
-          backgroundColor: isLevel ? '#4CAF50' : 'rgba(255,255,255,0.3)',
-          border: isLevel ? '4px solid #4CAF50' : '4px solid rgba(255,255,255,0.5)',
-          cursor: isLevel ? 'pointer' : 'not-allowed',
-          transition: 'all 0.2s',
-          zIndex: 100
-        }}
-      />
-
-      {/* Last photo preview and Retake button */}
-      {lastPhotoUrl && currentIndex > 0 && (
-        <div style={{
-          position: 'absolute',
-          bottom: '40px',
-          left: '20px',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          gap: '8px',
-          zIndex: 100
-        }}>
-          <img 
-            src={lastPhotoUrl} 
-            alt="Utolsó fotó" 
-            style={{
-              width: '60px', 
-              height: '80px', 
-              objectFit: 'cover', 
-              borderRadius: '8px',
-              border: '2px solid white',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.5)'
-            }} 
-          />
-          <button 
-            onClick={handleRetakeClick}
-            style={{
-              backgroundColor: 'rgba(244, 67, 54, 0.9)',
-              color: 'white',
-              border: 'none',
-              borderRadius: '12px',
-              padding: '6px 12px',
-              fontSize: '12px',
-              fontWeight: 'bold',
-              cursor: 'pointer',
-              backdropFilter: 'blur(4px)'
-            }}
-          >
-            ↻ Újra
-          </button>
-        </div>
+      {/* Shutter button (Only show for first photo) */}
+      {currentIndex === 0 && (
+        <button
+          onClick={handleCapture}
+          style={{
+            position: 'absolute',
+            bottom: '40px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            width: '80px',
+            height: '80px',
+            borderRadius: '50%',
+            backgroundColor: 'rgba(255,255,255,0.3)',
+            border: '4px solid white',
+            cursor: 'pointer',
+            transition: 'all 0.2s',
+            zIndex: 100
+          }}
+        >
+          <div style={{ width: '60px', height: '60px', backgroundColor: 'white', borderRadius: '50%', margin: '6px' }} />
+        </button>
       )}
 
       <canvas ref={canvasRef} style={{ display: 'none' }} />

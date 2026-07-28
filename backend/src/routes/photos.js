@@ -25,8 +25,8 @@ router.post('/vehicles/:vehicleId/photos', upload.single('photo'), async (req, r
       return res.status(400).json({ error: 'Photo is required' });
     }
 
-    if (!photoIndex || photoIndex < 1 || photoIndex > 24) {
-      return res.status(400).json({ error: 'photoIndex must be between 1 and 24' });
+    if (!photoIndex || photoIndex < 1 || photoIndex > 36) {
+      return res.status(400).json({ error: 'photoIndex must be between 1 and 36' });
     }
 
     // Create or get vehicle session
