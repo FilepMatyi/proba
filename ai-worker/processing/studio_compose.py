@@ -156,24 +156,73 @@ def _draw_turntable(canvas, cw, ch):
     return top_y
 
 
-def _draw_shadow(canvas, cw, car_cx, sit_y, car_w, car_h):
-    """Draw 3-layer elliptical shadow at the wheel line."""
-    shadow = Image.new('RGBA', (cw, canvas.height), (0, 0, 0, 0))
-    sd = ImageDraw.Draw(shadow)
+import cv2
 
-    for (frac_w, frac_h, alpha) in [
-        (0.70, 0.025, 90),   # contact - darker
-        (0.85, 0.050, 45),   # mid
-        (0.95, 0.080, 20),   # ambient - wider
-    ]:
-        sw = int(car_w * frac_w)
-        sh = max(int(car_h * frac_h), 4)
-        sd.ellipse([car_cx - sw//2, sit_y - sh//2,
-                    car_cx + sw//2, sit_y + sh//2],
-                   fill=(0, 0, 0, alpha))
-
-    shadow = shadow.filter(ImageFilter.GaussianBlur(radius=20))
-    canvas.paste(shadow, (0, 0), shadow)
+def _draw_generative_shadow(canvas, cw, ch, car_x, car_y, vehicle):
+    """
+    Project the vehicle's alpha mask to create a realistic drop shadow
+    that perfectly matches the silhouette.
+    """
+    vw, vh = vehicle.size
+    
+    # 1. Extract the alpha channel as a numpy array
+    alpha = np.array(vehicle)[:, :, 3]
+    
+    # 2. Pad the mask to prevent clipping during shear
+    pad = int(cw * 0.2)
+    canvas_w, canvas_h = vw + pad * 2, vh + pad * 2
+    padded = np.zeros((canvas_h, canvas_w), dtype=np.uint8)
+    padded[pad:pad+vh, pad:pad+vw] = alpha
+    
+    # 3. Affine Transform (Shear and Squash)
+    # The car is at (pad, pad). We want to squash it vertically (scale_y = 0.15)
+    # and shear it slightly to the right to simulate ambient lighting.
+    src_pts = np.float32([[pad, pad], [pad+vw, pad], [pad, pad+vh]])
+    
+    scale_y = 0.15
+    offset_y = vh * 0.35  # Push down so it sits under the tires
+    shear_x = 50
+    
+    dst_pts = np.float32([
+        [pad - shear_x, pad * scale_y + offset_y + pad],
+        [pad + vw + shear_x, pad * scale_y + offset_y + pad],
+        [pad, (pad+vh) * scale_y + offset_y + pad]
+    ])
+    
+    M = cv2.getAffineTransform(src_pts, dst_pts)
+    shadow_cv = cv2.warpAffine(padded, M, (canvas_w, canvas_h))
+    
+    # 4. Convert to PIL
+    shadow_img = Image.fromarray(shadow_cv, mode='L')
+    
+    # 5. Create multiple blurred layers for soft lighting
+    # Contact shadow (dark, tight)
+    blur1 = shadow_img.filter(ImageFilter.GaussianBlur(10))
+    blur1 = blur1.point(lambda p: p * 0.85)
+    
+    # Mid shadow (medium, softer)
+    blur2 = shadow_img.filter(ImageFilter.GaussianBlur(25))
+    blur2 = blur2.point(lambda p: p * 0.6)
+    
+    # Ambient shadow (very wide, faint)
+    blur3 = shadow_img.filter(ImageFilter.GaussianBlur(50))
+    blur3 = blur3.point(lambda p: p * 0.35)
+    
+    # Combine layers
+    shadow_final = ImageChops.add(blur1, blur2)
+    shadow_final = ImageChops.add(shadow_final, blur3)
+    
+    # 6. Paste onto canvas
+    shadow_rgba = Image.new('RGBA', (canvas_w, canvas_h), (0,0,0,0))
+    shadow_rgba.putalpha(shadow_final)
+    
+    # The vehicle is pasted at (car_x, car_y) on the main canvas.
+    # In our padded shadow image, the top-left of the original vehicle was at (pad, pad).
+    # So the top-left of the shadow image should be placed at (car_x - pad, car_y - pad)
+    target_x = car_x - pad
+    target_y = car_y - pad
+    
+    canvas.paste(shadow_rgba, (target_x, target_y), shadow_rgba)
 
 
 def _draw_reflection(canvas, vehicle, car_x, sit_y, wheel_bottom_local):
@@ -268,7 +317,7 @@ def create_studio_image(vehicle_image):
     canvas = _make_background(cw, ch, plat_top_y)
     _draw_reflection(canvas, vehicle_scaled, car_x, plat_top_y, wheel_bottom_local)
     _draw_turntable(canvas, cw, ch)
-    _draw_shadow(canvas, cw, car_cx, plat_top_y, target_w, target_h)
+    _draw_generative_shadow(canvas, cw, ch, car_x, car_y, vehicle_scaled)
     canvas.paste(vehicle_scaled, (car_x, car_y), vehicle_scaled)
 
     # ── Contrast boost for punch ──
