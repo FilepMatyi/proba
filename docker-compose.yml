@@ -56,8 +56,8 @@ services:
       MINIO_SECRET_KEY: minioadmin
       REDIS_URL: redis://redis:6379
       BACKEND_URL: http://backend:3000
-      ENABLE_ALPHA_MATTING: 'true'
-      REMBG_MODEL: isnet-general-use
+      ENABLE_ALPHA_MATTING: 'false'
+      REMBG_MODEL: birefnet-general
     depends_on:
       - minio
       - redis

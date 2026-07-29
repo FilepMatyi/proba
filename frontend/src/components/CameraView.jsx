@@ -1,25 +1,30 @@
 import { useEffect, useRef, useState } from 'react';
 
-function CameraView({ isLevel, onCapture, autoCaptureSignal, currentIndex, totalPhotos }) {
+function CameraView({ onVideoRecorded }) {
   const videoRef = useRef(null);
-  const canvasRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
+  const recordedChunks = useRef([]);
   const [stream, setStream] = useState(null);
-  const [videoDevices, setVideoDevices] = useState([]);
-  const [activeDeviceIndex, setActiveDeviceIndex] = useState(0);
-  const [lastPhotoUrl, setLastPhotoUrl] = useState(null);
-  const [flash, setFlash] = useState(false);
-
-  // Watch for auto-capture signal
-  useEffect(() => {
-    if (autoCaptureSignal > 0) {
-      handleCapture();
-    }
-  }, [autoCaptureSignal]);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
 
   useEffect(() => {
-    initCameras();
+    initCamera();
     return () => stopCurrentStream();
   }, []);
+
+  useEffect(() => {
+    let interval;
+    if (isRecording) {
+      interval = setInterval(() => {
+        setRecordingTime((prev) => prev + 1);
+      }, 1000);
+    } else {
+      setRecordingTime(0);
+      clearInterval(interval);
+    }
+    return () => clearInterval(interval);
+  }, [isRecording]);
 
   const stopCurrentStream = () => {
     if (videoRef.current && videoRef.current.srcObject) {
@@ -27,63 +32,19 @@ function CameraView({ isLevel, onCapture, autoCaptureSignal, currentIndex, total
     }
   };
 
-  const initCameras = async () => {
+  const initCamera = async () => {
     try {
-      // First request basic environment camera to get permissions
-      // which allows enumerateDevices to see labels.
-      let mediaStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment' }
-      });
-      
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const vDevices = devices.filter(d => d.kind === 'videoinput');
-      
-      // Try to filter out front cameras, keep rear/ultra-wide ones
-      let rearCameras = vDevices.filter(d => 
-        !d.label.toLowerCase().includes('front') && 
-        !d.label.toLowerCase().includes('user')
-      );
-      
-      // Fallback if filtering removed everything
-      if (rearCameras.length === 0) {
-        rearCameras = vDevices;
-      }
-      
-      setVideoDevices(rearCameras);
-      
-      // Stop the initial stream as we will start a specific device stream
-      mediaStream.getTracks().forEach(track => track.stop());
-      
-      if (rearCameras.length > 0) {
-        startCamera(rearCameras[0].deviceId);
-      } else {
-        // Ultimate fallback
-        startCamera(null);
-      }
-    } catch (error) {
-      console.error('Camera init error:', error);
-      // Fallback to default environment camera
-      startCamera(null);
-    }
-  };
+      stopCurrentStream();
+      // Request rear camera with 4K or 1080p 60fps ideally
+      const constraints = {
+        video: {
+          facingMode: 'environment',
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+          frameRate: { ideal: 60, min: 30 }
+        }
+      };
 
-  const startCamera = async (deviceId) => {
-    stopCurrentStream();
-    
-    const constraints = {
-      video: {
-        width: { ideal: 1920 },
-        height: { ideal: 1080 }
-      }
-    };
-    
-    if (deviceId) {
-      constraints.video.deviceId = { exact: deviceId };
-    } else {
-      constraints.video.facingMode = 'environment';
-    }
-
-    try {
       const mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
       setStream(mediaStream);
       if (videoRef.current) {
@@ -91,80 +52,89 @@ function CameraView({ isLevel, onCapture, autoCaptureSignal, currentIndex, total
       }
     } catch (error) {
       console.error('Camera start error:', error);
+      alert('Kamera hiba: ' + error.message);
     }
   };
 
-  const switchCamera = () => {
-    if (videoDevices.length <= 1) return;
-    const nextIndex = (activeDeviceIndex + 1) % videoDevices.length;
-    setActiveDeviceIndex(nextIndex);
-    startCamera(videoDevices[nextIndex].deviceId);
-  };
+  const startRecording = () => {
+    if (!stream) return;
+    recordedChunks.current = [];
+    
+    let options = { videoBitsPerSecond: 8000000 }; // 8 Mbps high quality
+    let mimeType = '';
+    if (MediaRecorder.isTypeSupported('video/webm;codecs=vp9')) {
+      mimeType = 'video/webm;codecs=vp9';
+    } else if (MediaRecorder.isTypeSupported('video/webm')) {
+      mimeType = 'video/webm';
+    } else if (MediaRecorder.isTypeSupported('video/mp4')) {
+      mimeType = 'video/mp4';
+    }
+    
+    if (mimeType) {
+      options.mimeType = mimeType;
+    }
 
-  const handleCapture = () => {
     try {
-      if (!videoRef.current || !canvasRef.current || !isLevel) {
-        return;
-      }
+      const mediaRecorder = new MediaRecorder(stream, options);
 
-      const video = videoRef.current;
-      const canvas = canvasRef.current;
-
-      const videoWidth = video.videoWidth;
-      const videoHeight = video.videoHeight;
-
-      const MAX_DIMENSION = 1920;
-      let targetWidth = videoWidth;
-      let targetHeight = videoHeight;
-
-      if (targetWidth > MAX_DIMENSION || targetHeight > MAX_DIMENSION) {
-        const scale = MAX_DIMENSION / Math.max(targetWidth, targetHeight);
-        targetWidth = Math.round(targetWidth * scale);
-        targetHeight = Math.round(targetHeight * scale);
-      }
-
-      canvas.width = targetWidth;
-      canvas.height = targetHeight;
-
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(video, 0, 0, targetWidth, targetHeight);
-
-      canvas.toBlob((blob) => {
-        if (!blob) {
-          throw new Error("Canvas toBlob failed - Blob is null");
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          recordedChunks.current.push(event.data);
         }
-        
-        // Show flash animation & vibrate
-        setFlash(true);
-        setTimeout(() => setFlash(false), 300);
-        if (navigator.vibrate) navigator.vibrate(50);
-        
-        // Create object URL for preview
-        const url = URL.createObjectURL(blob);
-        setLastPhotoUrl(url);
-        
-        onCapture(blob);
-      }, 'image/jpeg', 0.97);
-    } catch (error) {
-      alert(`Capture Error: ${error.message}`);
-      console.error('Capture error:', error);
+      };
+
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(recordedChunks.current, { type: mediaRecorder.mimeType });
+        onVideoRecorded(blob);
+      };
+
+      mediaRecorderRef.current = mediaRecorder;
+      mediaRecorder.start(1000); // collect 1s chunks
+      setIsRecording(true);
+      
+      if (navigator.vibrate) navigator.vibrate([50, 50, 50]);
+    } catch (e) {
+      console.error('MediaRecorder start error:', e);
+      alert('Nem sikerült elindítani a felvételt.');
     }
   };
 
-  // Remove retake logic as we don't allow retakes during continuous walk
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+      if (navigator.vibrate) navigator.vibrate(100);
+    }
+  };
+
+  const formatTime = (sec) => {
+    const m = Math.floor(sec / 60).toString().padStart(2, '0');
+    const s = (sec % 60).toString().padStart(2, '0');
+    return `${m}:${s}`;
+  };
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100dvh', touchAction: 'none' }}>
-      {/* Flash overlay */}
-      <div style={{
-        position: 'absolute',
-        top: 0, left: 0, right: 0, bottom: 0,
-        backgroundColor: 'white',
-        opacity: flash ? 0.8 : 0,
-        pointerEvents: 'none',
-        transition: 'opacity 0.1s',
-        zIndex: 200
-      }} />
+    <div style={{ position: 'relative', width: '100%', height: '100dvh', touchAction: 'none', backgroundColor: '#000' }}>
+      
+      {/* Recording Indicator */}
+      {isRecording && (
+        <div style={{
+          position: 'absolute', top: '20px', left: '20px', zIndex: 100,
+          display: 'flex', alignItems: 'center', gap: '8px',
+          backgroundColor: 'rgba(0,0,0,0.6)', padding: '6px 12px', borderRadius: '20px'
+        }}>
+          <div style={{
+            width: '12px', height: '12px', backgroundColor: 'red', borderRadius: '50%',
+            animation: 'pulse 1s infinite'
+          }} />
+          <span style={{ color: 'white', fontWeight: 'bold', fontFamily: 'monospace', fontSize: '16px' }}>
+            {formatTime(recordingTime)}
+          </span>
+          <style>
+            {`@keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }`}
+          </style>
+        </div>
+      )}
 
       <video
         ref={videoRef}
@@ -180,52 +150,25 @@ function CameraView({ isLevel, onCapture, autoCaptureSignal, currentIndex, total
 
       <div style={{
         position: 'absolute',
-        top: '75px',
+        top: '80px',
         left: '50%',
         transform: 'translateX(-50%)',
         backgroundColor: 'rgba(0, 0, 0, 0.55)',
         color: '#fff',
-        fontSize: '13px',
+        fontSize: '14px',
         fontWeight: '500',
-        padding: '6px 16px',
+        padding: '10px 20px',
         borderRadius: '20px',
         whiteSpace: 'nowrap',
         textAlign: 'center',
         zIndex: 100,
-        backdropFilter: 'blur(6px)',
-        letterSpacing: '0.01em',
+        backdropFilter: 'blur(6px)'
       }}>
-        Sétálj körbe egyenletes tempóban!
+        {isRecording 
+          ? "Sétálj körbe stabilan! (Kb 30-40 másodperc)" 
+          : "Nyomd meg a piros gombot és sétálj körbe!"}
       </div>
       
-      {/* Camera Switcher Button */}
-      {videoDevices.length > 1 && (
-        <button
-          onClick={switchCamera}
-          style={{
-            position: 'absolute',
-            top: '70px',
-            right: '20px',
-            width: '44px',
-            height: '44px',
-            borderRadius: '50%',
-            backgroundColor: 'rgba(0,0,0,0.5)',
-            border: '2px solid rgba(255,255,255,0.3)',
-            color: 'white',
-            fontSize: '18px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            cursor: 'pointer',
-            zIndex: 100,
-            backdropFilter: 'blur(5px)'
-          }}
-          title="Kamera váltás"
-        >
-          🔄
-        </button>
-      )}
-
       {/* Car silhouette overlay */}
       <svg
         viewBox="0 0 200 100"
@@ -236,7 +179,7 @@ function CameraView({ isLevel, onCapture, autoCaptureSignal, currentIndex, total
           transform: 'translate(-50%, -50%)',
           width: '80%',
           height: 'auto',
-          opacity: 0.3,
+          opacity: 0.2,
           pointerEvents: 'none'
         }}
       >
@@ -250,49 +193,35 @@ function CameraView({ isLevel, onCapture, autoCaptureSignal, currentIndex, total
         <circle cx="155" cy="75" r="12" fill="none" stroke="white" strokeWidth="2" />
       </svg>
 
-      {/* Photo counter */}
-      <div
+      {/* Record Button */}
+      <button
+        onClick={isRecording ? stopRecording : startRecording}
         style={{
           position: 'absolute',
-          top: '120px',
+          bottom: '50px',
           left: '50%',
           transform: 'translateX(-50%)',
-          color: '#fff',
-          fontSize: '16px',
-          fontWeight: 'bold',
-          textShadow: '1px 1px 2px rgba(0,0,0,0.8)',
-          backgroundColor: 'rgba(0,0,0,0.5)',
-          padding: '8px 16px',
-          borderRadius: '20px'
+          width: '80px',
+          height: '80px',
+          borderRadius: '50%',
+          backgroundColor: 'transparent',
+          border: '4px solid white',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 100
         }}
       >
-        {currentIndex === 0 ? "FOTÓZZ EGYET INDULÁSHOZ" : `${currentIndex} / ${totalPhotos}`}
-      </div>
+        <div style={{ 
+          width: isRecording ? '30px' : '60px', 
+          height: isRecording ? '30px' : '60px', 
+          backgroundColor: 'red', 
+          borderRadius: isRecording ? '4px' : '50%',
+          transition: 'all 0.2s ease'
+        }} />
+      </button>
 
-      {/* Shutter button (Only show for first photo) */}
-      {currentIndex === 0 && (
-        <button
-          onClick={handleCapture}
-          style={{
-            position: 'absolute',
-            bottom: '40px',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            width: '80px',
-            height: '80px',
-            borderRadius: '50%',
-            backgroundColor: 'rgba(255,255,255,0.3)',
-            border: '4px solid white',
-            cursor: 'pointer',
-            transition: 'all 0.2s',
-            zIndex: 100
-          }}
-        >
-          <div style={{ width: '60px', height: '60px', backgroundColor: 'white', borderRadius: '50%', margin: '6px' }} />
-        </button>
-      )}
-
-      <canvas ref={canvasRef} style={{ display: 'none' }} />
     </div>
   );
 }

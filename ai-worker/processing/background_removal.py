@@ -177,7 +177,14 @@ def remove_background(image_bytes, photo_index=0):
     # ── 2. Morphological mask cleanup ──
     image = _cleanup_mask(image, photo_index)
 
-    # ── 3. Window / glass tinting ──
+    # ── 3. Window / glass tinting (Heuristics) ──
     image = _darken_windows_and_holes(image)
+    
+    # ── 4. AI-driven Glass Masking (FastSAM) ──
+    try:
+        from glass_masking import apply_glass_masking
+        image = apply_glass_masking(image)
+    except Exception as e:
+        print(f"FastSAM glass masking failed: {e}")
 
     return image

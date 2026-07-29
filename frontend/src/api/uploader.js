@@ -1,82 +1,42 @@
-// Use relative path since frontend and backend are served from same origin
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
-class UploadQueue {
-  constructor(onProgress) {
-    this.queue = [];
-    this.activeUploads = 0;
-    this.maxConcurrent = 2;
-    this.onProgress = onProgress;
-  }
+export const uploadVideo = async (vehicleId, videoBlob, onProgress) => {
+  return new Promise((resolve, reject) => {
+    const formData = new FormData();
+    // Assuming the blob is webm or mp4
+    formData.append('video', videoBlob, 'capture.webm');
 
-  add(vehicleId, photoIndex, blob) {
-    return new Promise((resolve, reject) => {
-      this.queue.push({
-        vehicleId,
-        photoIndex,
-        blob,
-        resolve,
-        reject,
-        attempts: 0,
-        maxAttempts: 3
-      });
-
-      this.processQueue();
+    const xhr = new XMLHttpRequest();
+    
+    xhr.upload.addEventListener('progress', (event) => {
+      if (event.lengthComputable) {
+        const percentComplete = Math.round((event.loaded / event.total) * 100);
+        if (onProgress) onProgress(percentComplete);
+      }
     });
-  }
 
-  async processQueue() {
-    if (this.activeUploads >= this.maxConcurrent || this.queue.length === 0) {
-      return;
-    }
-
-    const job = this.queue.shift();
-    this.activeUploads++;
-
-    try {
-      await this.uploadWithRetry(job);
-      this.onProgress(job.photoIndex);
-      job.resolve();
-    } catch (error) {
-      if (job.attempts >= job.maxAttempts) {
-        job.reject(error);
-      } else {
-        // Re-queue for retry
-        this.queue.unshift(job);
-      }
-    } finally {
-      this.activeUploads--;
-      this.processQueue();
-    }
-  }
-
-  async uploadWithRetry(job) {
-    try {
-      const formData = new FormData();
-      formData.append('photo', job.blob);
-      formData.append('photoIndex', job.photoIndex);
-
-      job.attempts++;
-
-      const response = await fetch(
-        `${API_BASE_URL}/vehicles/${job.vehicleId}/photos`,
-        {
-          method: 'POST',
-          body: formData
+    xhr.addEventListener('load', () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const response = JSON.parse(xhr.responseText);
+          resolve(response);
+        } catch (e) {
+          resolve(xhr.responseText);
         }
-      );
-
-      if (!response.ok) {
-        throw new Error(`Upload failed: ${response.statusText}`);
+      } else {
+        reject(new Error(`Upload failed: ${xhr.statusText}`));
       }
+    });
 
-      const data = await response.json();
-      return data;
-    } catch (error) {
-      alert(`Upload Error: ${error.message}`);
-      throw error;
-    }
-  }
-}
+    xhr.addEventListener('error', () => {
+      reject(new Error('Network error during upload'));
+    });
 
-export default UploadQueue;
+    xhr.addEventListener('abort', () => {
+      reject(new Error('Upload aborted'));
+    });
+
+    xhr.open('POST', `${API_BASE_URL}/vehicles/${vehicleId}/video`);
+    xhr.send(formData);
+  });
+};
