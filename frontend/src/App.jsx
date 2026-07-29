@@ -19,12 +19,12 @@ function CaptureFlow() {
     }
   };
 
-  const handleVideoRecorded = async (videoBlob) => {
+  const handleVideoRecorded = async (videoBlob, sensorData) => {
     setAppState('UPLOADING');
     setUploadProgress(0);
     
     try {
-      await uploadVideo(vehicleId, videoBlob, (progress) => {
+      await uploadVideo(vehicleId, videoBlob, sensorData, (progress) => {
         setUploadProgress(progress);
       });
       setAppState('DONE');

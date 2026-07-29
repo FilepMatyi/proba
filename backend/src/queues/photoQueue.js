@@ -8,8 +8,16 @@ const CONSUMER_GROUP = 'photo-processing-group';
  * @param {string} _name - Job name (unused in Redis Streams, kept for compatibility)
  * @param {Object} data - Job data (vehicleId, photoIndex, objectKey)
  */
-async function add(_name, data) {
-  await redis.xadd(STREAM_NAME, '*', 'vehicleId', data.vehicleId, 'photoIndex', data.photoIndex.toString(), 'objectKey', data.objectKey);
+async function add(name, data) {
+  // Convert data object to flat array for xadd
+  const args = ['type', name];
+  for (const [key, value] of Object.entries(data)) {
+    if (value !== undefined && value !== null) {
+      args.push(key);
+      args.push(value.toString());
+    }
+  }
+  await redis.xadd(STREAM_NAME, '*', ...args);
 }
 
 /**

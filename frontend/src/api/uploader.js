@@ -1,10 +1,14 @@
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
-export const uploadVideo = async (vehicleId, videoBlob, onProgress) => {
+export const uploadVideo = async (vehicleId, videoBlob, sensorData, onProgress) => {
   return new Promise((resolve, reject) => {
     const formData = new FormData();
     // Assuming the blob is webm or mp4
     formData.append('video', videoBlob, 'capture.webm');
+    
+    if (sensorData && sensorData.length > 0) {
+      formData.append('sensorData', JSON.stringify(sensorData));
+    }
 
     const xhr = new XMLHttpRequest();
     

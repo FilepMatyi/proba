@@ -35,13 +35,13 @@ function CameraView({ onVideoRecorded }) {
   const initCamera = async () => {
     try {
       stopCurrentStream();
-      // Request rear camera with 4K or 1080p 60fps ideally
+      // Request rear camera with 1080p 30fps ideally
       const constraints = {
         video: {
           facingMode: 'environment',
           width: { ideal: 1920 },
           height: { ideal: 1080 },
-          frameRate: { ideal: 60, min: 30 }
+          frameRate: { ideal: 30, max: 30 }
         }
       };
 
@@ -56,18 +56,56 @@ function CameraView({ onVideoRecorded }) {
     }
   };
 
-  const startRecording = () => {
+  const sensorDataRef = useRef([]);
+  const recordingStartTimeRef = useRef(0);
+  
+  const handleOrientation = (event) => {
+    if (!isRecording) return;
+    if (event.beta !== null && event.gamma !== null) {
+      sensorDataRef.current.push({
+        time: Date.now() - recordingStartTimeRef.current,
+        beta: event.beta,
+        gamma: event.gamma,
+        alpha: event.alpha
+      });
+    }
+  };
+
+  const startRecording = async () => {
     if (!stream) return;
-    recordedChunks.current = [];
     
-    let options = { videoBitsPerSecond: 8000000 }; // 8 Mbps high quality
+    // Request gyro permission on iOS 13+
+    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+      try {
+        const permission = await DeviceOrientationEvent.requestPermission();
+        if (permission !== 'granted') {
+          console.warn('Gyro permission denied, will record without gyro');
+        }
+      } catch (err) {
+        console.error('Gyro permission error:', err);
+      }
+    }
+
+    recordedChunks.current = [];
+    sensorDataRef.current = [];
+    recordingStartTimeRef.current = Date.now();
+    
+    window.addEventListener('deviceorientation', handleOrientation);
+    
+    let options = { videoBitsPerSecond: 5000000 }; // 5 Mbps optimal for mobile
     let mimeType = '';
-    if (MediaRecorder.isTypeSupported('video/webm;codecs=vp9')) {
+    
+    // Prefer H.264 for hardware encoding to prevent stuttering
+    if (MediaRecorder.isTypeSupported('video/mp4;codecs=avc1')) {
+      mimeType = 'video/mp4;codecs=avc1';
+    } else if (MediaRecorder.isTypeSupported('video/webm;codecs=h264')) {
+      mimeType = 'video/webm;codecs=h264';
+    } else if (MediaRecorder.isTypeSupported('video/mp4')) {
+      mimeType = 'video/mp4';
+    } else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp9')) {
       mimeType = 'video/webm;codecs=vp9';
     } else if (MediaRecorder.isTypeSupported('video/webm')) {
       mimeType = 'video/webm';
-    } else if (MediaRecorder.isTypeSupported('video/mp4')) {
-      mimeType = 'video/mp4';
     }
     
     if (mimeType) {
@@ -84,8 +122,9 @@ function CameraView({ onVideoRecorded }) {
       };
 
       mediaRecorder.onstop = () => {
+        window.removeEventListener('deviceorientation', handleOrientation);
         const blob = new Blob(recordedChunks.current, { type: mediaRecorder.mimeType });
-        onVideoRecorded(blob);
+        onVideoRecorded(blob, sensorDataRef.current);
       };
 
       mediaRecorderRef.current = mediaRecorder;
@@ -104,6 +143,7 @@ function CameraView({ onVideoRecorded }) {
       mediaRecorderRef.current.stop();
       setIsRecording(false);
       if (navigator.vibrate) navigator.vibrate(100);
+      window.removeEventListener('deviceorientation', handleOrientation);
     }
   };
 
@@ -165,8 +205,8 @@ function CameraView({ onVideoRecorded }) {
         backdropFilter: 'blur(6px)'
       }}>
         {isRecording 
-          ? "Sétálj körbe stabilan! (Kb 30-40 másodperc)" 
-          : "Nyomd meg a piros gombot és sétálj körbe!"}
+          ? "Sétálj körbe egyenletesen! (Kb 30 másodperc)" 
+          : "Kezdd a BAL ELSŐ fényszórótól, majd indítsd!"}
       </div>
       
       {/* Car silhouette overlay */}

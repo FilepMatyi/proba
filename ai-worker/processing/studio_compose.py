@@ -259,7 +259,7 @@ def _draw_reflection(canvas, vehicle, car_x, sit_y, wheel_bottom_local):
 # MAIN ENTRY POINT
 # ═══════════════════════════════════════════════════════════════════════
 
-def create_studio_image(vehicle_image):
+def create_studio_image(vehicle_image, global_max_h=None):
     """
     Place vehicle onto a studio turntable.
 
@@ -272,6 +272,8 @@ def create_studio_image(vehicle_image):
 
     Args:
         vehicle_image: PIL RGBA Image with transparent background
+        global_max_h: The maximum height of the vehicle's bbox across all 36 frames. 
+                      Used to scale all frames consistently and prevent "breathing" zooms.
 
     Returns:
         PIL RGB Image on studio canvas
@@ -288,21 +290,31 @@ def create_studio_image(vehicle_image):
 
     # ── Scale car ──
     vw, vh = vehicle_image.size
+    
+    # Use global_max_h if provided, otherwise fallback to local vh
+    reference_vh = global_max_h if global_max_h else vh
+    
     target_h = int(ch * CAR_HEIGHT_FILL)
     
-    # Ensure the car width doesn't exceed 90% of the canvas width
-    max_w = int(cw * 0.90)
-    scale = min(target_h / vh, max_w / vw)
+    # Scale factor is based on the REFERENCE height, not the local height.
+    # This guarantees that if this frame is slightly smaller than the max frame,
+    # it stays proportionally smaller on the canvas, preventing fake zooming!
+    scale = target_h / reference_vh
     
+    # Ensure the scaled width doesn't exceed 90% of the canvas width
+    if (vw * scale) > int(cw * 0.90):
+        scale = int(cw * 0.90) / vw
+        
     target_w = int(vw * scale)
-    target_h = int(vh * scale)
-    vehicle_scaled = vehicle_image.resize((target_w, target_h), Image.LANCZOS)
+    local_target_h = int(vh * scale) # The actual height of THIS scaled frame
+    
+    vehicle_scaled = vehicle_image.resize((target_w, local_target_h), Image.LANCZOS)
 
     # ── Find the actual wheel-bottom row ──
     alpha_arr = np.array(vehicle_scaled)[:, :, 3]
     wheel_bottom_local = _find_wheel_bottom(alpha_arr, target_w)
     # How many pixels of "dead space" below the wheels?
-    bottom_gap = target_h - 1 - wheel_bottom_local
+    bottom_gap = local_target_h - 1 - wheel_bottom_local
 
     # ── Turntable top-edge Y ──
     plat_top_y = int(ch * PLATFORM_CY_FRAC) - int(ch * PLATFORM_H_FRAC / 2)
@@ -328,7 +340,7 @@ def create_studio_image(vehicle_image):
     if DEBUG_OVERLAY:
         dbg = ImageDraw.Draw(canvas)
         # Bounding box (green)
-        dbg.rectangle([car_x, car_y, car_x + target_w, car_y + target_h],
+        dbg.rectangle([car_x, car_y, car_x + target_w, car_y + local_target_h],
                       outline='lime', width=2)
         # Wheel-bottom line (red)
         wbl_y = car_y + wheel_bottom_local
@@ -338,7 +350,7 @@ def create_studio_image(vehicle_image):
         # Label
         dbg.text((10, 10),
                  f"wheel_bottom={wheel_bottom_local} gap={bottom_gap} "
-                 f"plat_top={plat_top_y} car_y={car_y}",
+                 f"plat_top={plat_top_y} car_y={car_y} global_h={global_max_h}",
                  fill='white')
 
     return canvas

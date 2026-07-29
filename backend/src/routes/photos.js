@@ -29,28 +29,35 @@ router.post('/vehicles/:vehicleId/video', uploadVideo.single('video'), async (re
 
   if (!videoFile) return res.status(400).json({ error: 'Video is required' });
 
+  let sensorData = null;
+  if (req.body.sensorData) {
+    try {
+      sensorData = JSON.parse(req.body.sensorData);
+    } catch (e) {
+      console.warn('Failed to parse sensorData', e);
+    }
+  }
+
   try {
     console.log(`Processing video for vehicle ${vehicleId}: ${videoFile.path}`);
     await sessionService.getOrCreateSession(vehicleId);
     
     res.status(202).json({ status: 'processing_video', message: 'Video upload successful. Extracting frames.' });
 
-    const numFrames = 36;
+    // Extract 108 frames to allow AI to select the sharpest/most level 36 frames
+    const numFrames = 108;
     const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vs360-'));
     const fixedVideoPath = `${videoFile.path}-fixed.webm`;
-
-    // 1. MediaRecorder produces WebM files without duration metadata.
-    // We must re-mux it first so fluent-ffmpeg can read the duration for evenly spaced screenshots.
+    
+    // 1. Re-mux WebM to fix missing duration
     exec(`ffmpeg -i "${videoFile.path}" -c copy "${fixedVideoPath}"`, (err, stdout, stderr) => {
       if (err) {
         console.error('Error fixing webm duration:', err);
-        // Fallback to original file if fix fails (might still fail in screenshots)
-        extractFrames(videoFile.path, outDir, vehicleId, numFrames, [videoFile.path, fixedVideoPath]);
+        extractCandidateFrames(videoFile.path, outDir, vehicleId, numFrames, sensorData, [videoFile.path, fixedVideoPath]);
         return;
       }
-      
-      // 2. Extract frames from the fixed video
-      extractFrames(fixedVideoPath, outDir, vehicleId, numFrames, [videoFile.path, fixedVideoPath]);
+      // 2. Extract frames
+      extractCandidateFrames(fixedVideoPath, outDir, vehicleId, numFrames, sensorData, [videoFile.path, fixedVideoPath]);
     });
 
   } catch (error) {
@@ -59,25 +66,38 @@ router.post('/vehicles/:vehicleId/video', uploadVideo.single('video'), async (re
   }
 });
 
-function extractFrames(inputPath, outDir, vehicleId, numFrames, filesToCleanup) {
-  ffmpeg(inputPath)
+function extractCandidateFrames(inputPath, outDir, vehicleId, numFrames, sensorData, filesToCleanup) {
+  const f = ffmpeg(inputPath)
     .on('end', async () => {
-      console.log(`Extracted frames for ${vehicleId}`);
+      console.log(`Extracted ${numFrames} candidate frames for ${vehicleId}`);
       try {
         const files = fs.readdirSync(outDir).filter(f => f.endsWith('.jpg')).sort();
+        
+        // Upload sensorData first
+        if (sensorData) {
+          const sensorKey = `${vehicleId}/candidates/sensorData.json`;
+          const sensorBuffer = Buffer.from(JSON.stringify(sensorData));
+          await minioClient.putObject(RAW_BUCKET, sensorKey, sensorBuffer, sensorBuffer.length, { 'Content-Type': 'application/json' });
+        }
+        
+        // Upload 108 frames
         for (let i = 0; i < files.length; i++) {
-          const photoIndex = i + 1;
-          if (photoIndex > numFrames) break;
-          
+          if (i >= numFrames) break;
           const filePath = path.join(outDir, files[i]);
           const buffer = fs.readFileSync(filePath);
-          const objectKey = `${vehicleId}/${photoIndex}-${uuidv4()}.jpg`;
+          const objectKey = `${vehicleId}/candidates/frame-${(i+1).toString().padStart(3, '0')}.jpg`;
           
           await minioClient.putObject(RAW_BUCKET, objectKey, buffer, buffer.length, { 'Content-Type': 'image/jpeg' });
-          await photoQueue.add('process-photo', { vehicleId, photoIndex, objectKey });
-          await redis.incr(`vehicle:${vehicleId}:uploaded`);
         }
-        console.log(`Finished queueing ${files.length} frames for ${vehicleId}`);
+        
+        // Queue the AI selection task
+        await photoQueue.add('select-frames', { 
+           vehicleId, 
+           frameCount: Math.min(files.length, numFrames),
+           hasSensorData: !!sensorData
+        });
+        
+        console.log(`Finished queueing select-frames for ${vehicleId}`);
       } catch (error) {
         console.error('Error processing extracted frames:', error);
       } finally {
@@ -87,13 +107,14 @@ function extractFrames(inputPath, outDir, vehicleId, numFrames, filesToCleanup) 
     .on('error', (err) => {
       console.error('Error extracting frames with ffmpeg:', err);
       cleanup(filesToCleanup, outDir);
-    })
-    .screenshots({
-      count: numFrames,
-      folder: outDir,
-      filename: 'frame-%03i.jpg',
-      size: '1920x1080'
     });
+
+  f.screenshots({
+    count: numFrames,
+    folder: outDir,
+    filename: 'frame-%03i.jpg',
+    size: '1920x1080'
+  });
 }
 
 function cleanup(files, dir) {
