@@ -14,7 +14,7 @@ async function add(name, data) {
   for (const [key, value] of Object.entries(data)) {
     if (value !== undefined && value !== null) {
       args.push(key);
-      args.push(value.toString());
+      args.push(typeof value === 'object' ? JSON.stringify(value) : value.toString());
     }
   }
   await redis.xadd(STREAM_NAME, '*', ...args);

@@ -295,49 +295,94 @@ router.get('/viewer/:vehicleId', async (req, res) => {
   const $zoomOut    = document.getElementById('zoomOutBtn');
   const $zoomReset  = document.getElementById('zoomResetBtn');
 
-  /* ═══════════════ Preloader ═══════════════ */
-  function preloadImages() {
-    let loaded = 0;
-    const total = imageUrls.length;
-    let ratioSet = false;
+  /* ═══════════════ Progressive Lazy Loader ═══════════════ */
+  const BATCH_SIZE = 4; // Load 4 images at a time in background
+  let allImgsReady = false;
 
+  function preloadImages() {
+    const total = imageUrls.length;
     if (total === 0) {
       $loadTxt.textContent = 'No processed images yet — check back shortly';
       return;
     }
 
+    // Create all img elements (but don't set src yet)
     imageUrls.forEach((url, i) => {
       const img = document.createElement('img');
-      img.src = url;
       img.alt = 'View ' + (i + 1);
       img.dataset.index = i;
+      img.dataset.src = url; // Store URL but don't load yet
       img.draggable = false;
-
-      img.onload = () => {
-        loaded++;
-        if (!ratioSet) {
-          ratioSet = true;
-          $container.style.paddingTop =
-            ((img.naturalHeight / img.naturalWidth) * 100) + '%';
-        }
-        $loadTxt.textContent = 'Loading ' + loaded + ' of ' + total;
-        $loadBar.style.width = Math.round(loaded / total * 100) + '%';
-        if (loaded === total) { 
-          $overlay.style.display = 'none'; 
-          showImage(0); 
-          startAnimationLoop(); 
-        }
-      };
-      img.onerror = () => {
-        loaded++;
-        if (loaded === total) { 
-          $overlay.style.display = 'none'; 
-          showImage(0); 
-          startAnimationLoop(); 
-        }
-      };
       $container.appendChild(img);
     });
+
+    // Phase 1: Load ONLY the hero frame (index 0) immediately
+    $loadTxt.textContent = 'Loading hero frame…';
+    const heroImg = $container.querySelector('img[data-index="0"]');
+    heroImg.onload = () => {
+      $container.style.paddingTop =
+        ((heroImg.naturalHeight / heroImg.naturalWidth) * 100) + '%';
+      heroImg.classList.add('active');
+      $overlay.style.display = 'none';
+      currentIndex = 0;
+      startAnimationLoop();
+
+      // Phase 2: Load remaining frames progressively in background
+      loadRemainingFrames();
+    };
+    heroImg.onerror = () => {
+      $overlay.style.display = 'none';
+      loadRemainingFrames();
+    };
+    heroImg.src = imageUrls[0]; // Start loading hero frame
+  }
+
+  function loadRemainingFrames() {
+    const imgs = $container.querySelectorAll('img');
+    const remaining = [];
+    imgs.forEach((img, i) => {
+      if (i !== 0) remaining.push(img); // Skip hero (already loaded)
+    });
+
+    let loaded = 1; // Hero already loaded
+    const total = imageUrls.length;
+
+    function loadBatch(startIdx) {
+      const batch = remaining.slice(startIdx, startIdx + BATCH_SIZE);
+      if (batch.length === 0) {
+        allImgsReady = true;
+        return;
+      }
+
+      let batchDone = 0;
+      batch.forEach(img => {
+        const onDone = () => {
+          loaded++;
+          batchDone++;
+          // Update a subtle progress indicator in the info bar
+          const pct = Math.round((loaded / total) * 100);
+          const infoSpan = document.querySelector('.info-bar span:last-child');
+          if (infoSpan && pct < 100) {
+            infoSpan.innerHTML = '<strong>Loading:</strong> ' + pct + '%';
+          } else if (infoSpan) {
+            infoSpan.innerHTML = '<strong>Frames:</strong> ' + total;
+          }
+          if (batchDone === batch.length) {
+            // Use requestIdleCallback (or setTimeout fallback) to avoid blocking
+            if (typeof requestIdleCallback === 'function') {
+              requestIdleCallback(() => loadBatch(startIdx + BATCH_SIZE));
+            } else {
+              setTimeout(() => loadBatch(startIdx + BATCH_SIZE), 50);
+            }
+          }
+        };
+        img.onload = onDone;
+        img.onerror = onDone;
+        img.src = img.dataset.src; // Start loading
+      });
+    }
+
+    loadBatch(0);
   }
 
   /* ═══════════════ Show / Rotate ═══════════════ */

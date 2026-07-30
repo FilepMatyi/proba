@@ -84,23 +84,31 @@ def apply_glass_masking(image_rgba):
         wx, wy, ww, wh = cv2.boundingRect(window_coords)
         
         for row in range(wy, wy + wh):
-            # 0.0 at top, 1.0 at bottom
             t = (row - wy) / max(1, wh)
             
-            # Dark charcoal at top (15, 20, 25), lighter blue-gray at bottom (40, 50, 65)
+            # Base: dark charcoal with blue tint
             r = int(15 * (1 - t) + 40 * t)
             g = int(20 * (1 - t) + 50 * t)
             b = int(25 * (1 - t) + 65 * t)
             
+            # Studio softbox reflection: bright horizontal band at ~30% height
+            reflection_center = 0.30
+            reflection_width = 0.15
+            reflection_dist = abs(t - reflection_center) / reflection_width
+            if reflection_dist < 1.0:
+                # Smooth falloff using cosine
+                reflection_intensity = 0.5 * (1 + np.cos(np.pi * reflection_dist))
+                r = int(r + (200 - r) * reflection_intensity * 0.25)
+                g = int(g + (210 - g) * reflection_intensity * 0.25)
+                b = int(b + (220 - b) * reflection_intensity * 0.25)
+            
             row_mask = combined_window_mask[row, :] == 255
             
-            # Blend with original
-            alpha_blend = 0.85 # 85% opaque tint
+            alpha_blend = 0.82  # Slightly less opaque to preserve some original detail
             
             arr[row, row_mask, 0] = arr[row, row_mask, 0] * (1 - alpha_blend) + r * alpha_blend
             arr[row, row_mask, 1] = arr[row, row_mask, 1] * (1 - alpha_blend) + g * alpha_blend
             arr[row, row_mask, 2] = arr[row, row_mask, 2] * (1 - alpha_blend) + b * alpha_blend
-            # Ensure it's opaque in the final alpha channel so we don't see the background through it
             arr[row, row_mask, 3] = 255
 
     from PIL import Image

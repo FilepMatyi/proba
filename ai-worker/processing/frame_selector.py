@@ -25,7 +25,7 @@ def select_optimal_frames(sensor_data, frame_keys, num_frames=36):
     if not sensor_data or len(sensor_data) == 0:
         # Fallback if no sensor data: just pick evenly spaced frames
         step = len(frame_keys) / num_frames
-        return [int(i * step) for i in range(num_frames)]
+        return [[{'index': int(i * step), 'alpha': 0, 'beta': 0, 'gamma': 0, 'unwrapped_alpha': 0}] for i in range(num_frames)], 0, 0
         
     # Map each candidate frame to its approximate timestamp
     total_time = sensor_data[-1]['time']
@@ -68,6 +68,14 @@ def select_optimal_frames(sensor_data, frame_keys, num_frames=36):
         frame_metrics[i]['unwrapped_alpha'] = alpha
         
     total_rotation = unwrapped_alphas[-1] - unwrapped_alphas[0]
+    # Normalize to exactly one full rotation (360°)
+    # If user walked more or less than 360°, we map to one clean lap
+    if abs(total_rotation) < 30:
+        # Almost no rotation detected — fallback to even spacing
+        step = len(frame_keys) / num_frames
+        return [[{'index': int(i * step), 'alpha': 0, 'beta': median_beta, 'gamma': median_gamma, 'unwrapped_alpha': 0}] for i in range(num_frames)], median_beta, median_gamma
+    direction = 1 if total_rotation > 0 else -1
+    total_rotation = 360.0 * direction
     angle_step = total_rotation / num_frames
     
     selected_indices = []

@@ -212,6 +212,18 @@ def _draw_generative_shadow(canvas, cw, ch, car_x, car_y, vehicle):
     shadow_final = ImageChops.add(blur1, blur2)
     shadow_final = ImageChops.add(shadow_final, blur3)
     
+    # 5b. Ambient Occlusion — tight dark shadow directly under the car
+    # This simulates the darkness where the car body blocks ambient light
+    ao_mask = Image.fromarray(padded, mode='L')  # Original unsheared mask
+    # Shift it down slightly and blur tightly
+    ao_shifted = Image.new('L', (canvas_w, canvas_h), 0)
+    ao_shifted.paste(ao_mask, (0, 8))  # 8px down
+    ao_blur = ao_shifted.filter(ImageFilter.GaussianBlur(6))
+    ao_blur = ao_blur.point(lambda p: min(255, int(p * 1.2)))  # Intensify
+    
+    # Combine AO with the projected shadow
+    shadow_final = ImageChops.add(shadow_final, ao_blur)
+    
     # 6. Paste onto canvas
     shadow_rgba = Image.new('RGBA', (canvas_w, canvas_h), (0,0,0,0))
     shadow_rgba.putalpha(shadow_final)
@@ -335,6 +347,14 @@ def create_studio_image(vehicle_image, global_max_h=None):
     # ── Contrast boost for punch ──
     canvas = ImageEnhance.Contrast(canvas).enhance(1.08)
     canvas = ImageEnhance.Sharpness(canvas).enhance(1.20)
+
+    # ── Color harmonization: warm up slightly to match studio lighting ──
+    # Shift toward neutral warm by reducing blue cast from outdoor captures
+    canvas_arr = np.array(canvas)
+    # Subtle warm shift: reduce blue by 3%, increase red by 1%
+    canvas_arr[:,:,0] = np.clip(canvas_arr[:,:,0].astype(np.int16) + 2, 0, 255).astype(np.uint8)  # R
+    canvas_arr[:,:,2] = np.clip(canvas_arr[:,:,2].astype(np.int16) - 4, 0, 255).astype(np.uint8)  # B
+    canvas = Image.fromarray(canvas_arr, 'RGB')
 
     # ── Debug overlay ──
     if DEBUG_OVERLAY:

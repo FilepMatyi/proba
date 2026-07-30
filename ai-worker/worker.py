@@ -162,10 +162,39 @@ def handle_bg_removal(fields):
         content_type='image/png'
     )
     
-    # Check if all 36 frames are done
-    count = redis_client.incr(f"vehicle:{vehicle_id}:bg_removed")
-    if count == 36:
-        print(f"[{vehicle_id}] All 36 backgrounds removed. Queuing Stage 3 (Studio Compose) for all frames.")
+    # Check if all 36 frames are done (idempotent via SADD)
+    redis_client.sadd(f"vehicle:{vehicle_id}:bg_done", str(photo_index))
+    done_count = redis_client.scard(f"vehicle:{vehicle_id}:bg_done")
+    if done_count >= 36:
+        print(f"[{vehicle_id}] All 36 backgrounds removed. Running exposure normalization...")
+        
+        # Download all 36 transparent images for batch exposure normalization
+        try:
+            from processing.exposure_normalize import normalize_exposure
+            images_dict = {}
+            for i in range(1, 37):
+                key = f"{vehicle_id}/transparent-{i}.png"
+                resp = minio_client.get_object(RAW_BUCKET, key)
+                images_dict[i] = Image.open(io.BytesIO(resp.read()))
+                resp.close()
+                resp.release_conn()
+            
+            # Normalize exposure across all 36 frames
+            normalized = normalize_exposure(images_dict)
+            
+            # Re-upload normalized transparent images
+            for i, img in normalized.items():
+                buf = io.BytesIO()
+                img.save(buf, format='PNG', optimize=True)
+                buf.seek(0)
+                key = f"{vehicle_id}/transparent-{i}.png"
+                minio_client.put_object(RAW_BUCKET, key, buf, length=buf.getbuffer().nbytes, content_type='image/png')
+            
+            print(f"[{vehicle_id}] Exposure normalization complete. Queuing Stage 3.")
+        except Exception as e:
+            print(f"[{vehicle_id}] Exposure normalization failed (continuing anyway): {e}")
+        
+        # Queue Stage 3 for all frames
         for i in range(1, 37):
             redis_client.xadd(STREAM_NAME, {
                 'type': 'process-studio',
@@ -242,11 +271,31 @@ def initialize_consumer_group():
             raise
 
 
+def claim_stale_messages():
+    """Claim messages that have been pending for more than 60 seconds (crashed workers)."""
+    try:
+        pending = redis_client.xpending_range(STREAM_NAME, CONSUMER_GROUP, '-', '+', 50)
+        now = int(time.time() * 1000)
+        for entry in pending:
+            idle_ms = entry.get('time_since_delivered', 0)
+            if idle_ms > 60000:  # Stuck for >60 seconds
+                msg_id = entry['message_id']
+                claimed = redis_client.xclaim(
+                    STREAM_NAME, CONSUMER_GROUP, CONSUMER_NAME,
+                    min_idle_time=60000, message_ids=[msg_id]
+                )
+                if claimed:
+                    print(f"Claimed stale message: {msg_id}")
+    except Exception as e:
+        print(f"Error claiming stale messages: {e}")
+
+
 def worker_loop():
     print(f"Starting AI worker as consumer: {CONSUMER_NAME}")
     initialize_consumer_group()
     
     while True:
+        claim_stale_messages()
         try:
             messages = redis_client.xreadgroup(
                 CONSUMER_GROUP, CONSUMER_NAME, {STREAM_NAME: '>'}, count=1, block=5000
