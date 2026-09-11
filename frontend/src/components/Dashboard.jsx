@@ -1,201 +1,147 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Camera, CheckCircle, Clock, Copy, ExternalLink, Trash2, ArrowLeft } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Camera, Check, Copy, ExternalLink, LoaderCircle, Rotate3D, ShieldCheck, Trash2 } from 'lucide-react';
+
+import { deleteSession, getSessions } from '../api/uploader';
+
+const STAGE_LABELS = {
+  uploading: 'Feltöltés', extracting: 'Képkockák', selecting: 'Válogatás', composing: 'Stúdiófeldolgozás', ready: 'Elkészült', failed: 'Sikertelen',
+};
+
+function parseWarnings(value) {
+  if (Array.isArray(value)) return value;
+  try {
+    const warnings = JSON.parse(value || '[]');
+    return Array.isArray(warnings) ? warnings : [];
+  } catch {
+    return [];
+  }
+}
 
 export default function Dashboard() {
   const navigate = useNavigate();
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [copiedId, setCopiedId] = useState(null);
 
-  const fetchSessions = async () => {
-    try {
-      const response = await fetch('/api/sessions');
-      if (response.ok) {
-        const data = await response.json();
-        setSessions(data);
-      }
-    } catch (error) {
-      console.error('Error fetching sessions:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    fetchSessions();
+    let active = true;
+    const refresh = async () => {
+      try {
+        const data = await getSessions();
+        if (active) {
+          setSessions(data);
+          setError('');
+        }
+      } catch (requestError) {
+        if (active) setError(requestError.message);
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    refresh();
+    const timer = window.setInterval(refresh, 5000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
   }, []);
 
-  const handleDelete = async (vehicleId) => {
+  const removeSession = async (vehicleId) => {
     if (!window.confirm(`Biztosan törlöd a(z) ${vehicleId} projektet?`)) return;
     try {
-      await fetch(`/api/sessions/${vehicleId}`, { method: 'DELETE' });
-      fetchSessions();
-    } catch (error) {
-      console.error('Error deleting:', error);
+      await deleteSession(vehicleId);
+      setSessions((items) => items.filter((item) => item.vehicleId !== vehicleId));
+    } catch (requestError) {
+      setError(requestError.message);
     }
   };
 
-  const copyEmbedCode = (vehicleId) => {
+  const copyEmbedCode = async (vehicleId) => {
     const baseUrl = window.location.origin;
     const code = `<div data-vs360-vehicle="${vehicleId}"></div>\n<script src="${baseUrl}/embed.js"></script>`;
-    navigator.clipboard.writeText(code);
-    setCopiedId(vehicleId);
-    setTimeout(() => setCopiedId(null), 2000);
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopiedId(vehicleId);
+      window.setTimeout(() => setCopiedId(null), 2000);
+    } catch {
+      setError('Az embed kód nem másolható automatikusan ezen az eszközön.');
+    }
   };
 
   return (
-    <div style={{
-      minHeight: '100dvh',
-      backgroundColor: '#000',
-      color: '#fff',
-      padding: '20px',
-      fontFamily: 'system-ui, -apple-system, sans-serif'
-    }}>
-      <div style={{ maxWidth: '800px', margin: '0 auto' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-            <button
-              onClick={() => navigate('/')}
-              style={{
-                background: 'transparent',
-                border: '1px solid #333',
-                color: '#fff',
-                borderRadius: '8px',
-                padding: '8px',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}
-            >
-              <ArrowLeft size={20} />
-            </button>
-            <h1 style={{ margin: 0 }}>Kereskedői Dashboard</h1>
-          </div>
-          <button
-            onClick={() => navigate('/')}
-            style={{
-              backgroundColor: '#4CAF50',
-              color: '#fff',
-              border: 'none',
-              borderRadius: '8px',
-              padding: '10px 20px',
-              fontWeight: 'bold',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px'
-            }}
-          >
-            <Camera size={18} /> Új Fotózás
-          </button>
+    <main className="dashboard-shell">
+      <header className="dashboard-header">
+        <div>
+          <button className="back-link" onClick={() => navigate('/')}><ArrowLeft size={16} /> Rögzítés</button>
+          <p className="eyebrow">Kereskedői munkatér</p>
+          <h1>360° bemutatók</h1>
+          <p>{sessions.length} projekt · automatikus frissítés</p>
         </div>
+        <button className="button button-primary" onClick={() => navigate('/')}><Camera size={18} /> Új autó</button>
+      </header>
 
-        {loading ? (
-          <p style={{ textAlign: 'center', color: '#888' }}>Betöltés...</p>
-        ) : sessions.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '50px', backgroundColor: '#111', borderRadius: '12px' }}>
-            <Camera size={48} color="#444" style={{ marginBottom: '15px' }} />
-            <h3>Még nincsenek autók</h3>
-            <p style={{ color: '#888' }}>Kezdj el fotózni, hogy megjelenjenek itt.</p>
-          </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-            {sessions.map(session => (
-              <div key={session.vehicleId} style={{
-                backgroundColor: '#111',
-                border: '1px solid #222',
-                borderRadius: '12px',
-                padding: '20px',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                flexWrap: 'wrap',
-                gap: '15px'
-              }}>
-                <div style={{ flex: '1 1 200px' }}>
-                  <h3 style={{ margin: '0 0 5px 0', fontSize: '18px' }}>{session.vehicleId}</h3>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '14px', color: '#888' }}>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <Clock size={14} />
-                      {new Date(session.createdAt).toLocaleDateString()}
-                    </span>
-                    <span>•</span>
-                    <span style={{
-                      display: 'flex', alignItems: 'center', gap: '4px',
-                      color: session.status === 'completed' ? '#4CAF50' : '#FF9800'
-                    }}>
-                      {session.status === 'completed' ? <CheckCircle size={14} /> : <Clock size={14} />}
-                      {session.status === 'completed' ? 'Kész' : `${session.processedFrames}/${session.totalFrames} feldolgozva`}
-                    </span>
+      {error && <div className="dashboard-alert"><AlertTriangle size={18} /> {error}</div>}
+
+      {loading ? (
+        <div className="dashboard-empty"><LoaderCircle className="spin" size={28} /><p>Projektek betöltése…</p></div>
+      ) : sessions.length === 0 ? (
+        <div className="dashboard-empty">
+          <span><Rotate3D size={30} /></span>
+          <h2>Az első bemutató rád vár</h2>
+          <p>Egy rövid videóból 36 egységes, interaktív nézet készül.</p>
+          <button className="button button-primary" onClick={() => navigate('/')}><Camera size={18} /> Első felvétel</button>
+        </div>
+      ) : (
+        <section className="project-grid">
+          {sessions.map((session) => {
+            const progress = Math.round((session.processedFrames / session.totalFrames) * 100);
+            const completed = session.status === 'completed';
+            const failed = session.status === 'failed';
+            const warnings = parseWarnings(session.qualityWarnings);
+            const qualityTone = session.qualityScore >= 82 ? 'excellent' : session.qualityScore >= 68 ? 'good' : 'review';
+            const qualityLabel = qualityTone === 'excellent' ? 'Kiváló' : qualityTone === 'good' ? 'Jó' : 'Ellenőrzendő';
+            return (
+              <article className="project-card" key={session.vehicleId}>
+                <div className="project-card-top">
+                  <div className={`project-status ${completed ? 'complete' : failed ? 'failed' : ''}`}>
+                    {completed ? <Check size={15} /> : failed ? <AlertTriangle size={15} /> : <LoaderCircle className="spin" size={15} />}
+                    {STAGE_LABELS[session.stage] || 'Feldolgozás'}
                   </div>
+                  <button className="icon-button danger" onClick={() => removeSession(session.vehicleId)} aria-label={`${session.vehicleId} törlése`}><Trash2 size={16} /></button>
+                </div>
+                <h2>{session.vehicleId}</h2>
+                <p className="project-date">{new Intl.DateTimeFormat('hu-HU', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(session.createdAt))}</p>
+
+                {session.qualityScore !== null && session.qualityScore !== undefined && (
+                  <div className={`quality-report ${qualityTone}`} title={warnings.join('\n')}>
+                    <ShieldCheck size={16} />
+                    <span><small>Automatikus képminőség</small>{qualityLabel}</span>
+                    <strong>{session.qualityScore}<small>/100</small></strong>
+                  </div>
+                )}
+                {completed && warnings.length > 0 && (
+                  <p className="quality-warning"><AlertTriangle size={13} /> {warnings[0]}</p>
+                )}
+
+                <div className="project-progress">
+                  <div><span>{completed ? '36 nézet kész' : failed ? 'Feldolgozás megállt' : `${session.processedFrames} / ${session.totalFrames} kép`}</span><b>{failed ? '!' : `${progress}%`}</b></div>
+                  <div className={`progress-track ${failed ? 'progress-failed' : ''}`}><span style={{ width: `${failed ? 100 : progress}%` }} /></div>
                 </div>
 
-                <div style={{ display: 'flex', gap: '10px' }}>
-                  <button
-                    onClick={() => copyEmbedCode(session.vehicleId)}
-                    style={{
-                      backgroundColor: 'transparent',
-                      color: '#ddd',
-                      border: '1px solid #333',
-                      borderRadius: '6px',
-                      padding: '8px 12px',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      fontSize: '13px'
-                    }}
-                  >
-                    {copiedId === session.vehicleId ? <CheckCircle size={16} color="#4CAF50" /> : <Copy size={16} />}
-                    {copiedId === session.vehicleId ? 'Másolva!' : 'Embed kód'}
+                <div className="project-actions">
+                  <button className="button button-secondary" onClick={() => copyEmbedCode(session.vehicleId)} disabled={!completed}>
+                    {copiedId === session.vehicleId ? <Check size={16} /> : <Copy size={16} />}
+                    {copiedId === session.vehicleId ? 'Másolva' : 'Embed'}
                   </button>
-                  
-                  {session.status === 'completed' && (
-                    <a
-                      href={`/viewer/${session.vehicleId}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      style={{
-                        backgroundColor: '#2196F3',
-                        color: '#fff',
-                        textDecoration: 'none',
-                        borderRadius: '6px',
-                        padding: '8px 12px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        fontSize: '13px',
-                        fontWeight: '500'
-                      }}
-                    >
-                      <ExternalLink size={16} /> Nézőke
-                    </a>
-                  )}
-
-                  <button
-                    onClick={() => handleDelete(session.vehicleId)}
-                    style={{
-                      backgroundColor: 'transparent',
-                      color: '#F44336',
-                      border: '1px solid #333',
-                      borderRadius: '6px',
-                      padding: '8px',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center'
-                    }}
-                  >
-                    <Trash2 size={16} />
-                  </button>
+                  {completed && <a className="button button-primary" href={`/viewer/${session.vehicleId}`} target="_blank" rel="noreferrer">Megnyitás <ExternalLink size={16} /></a>}
                 </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
+              </article>
+            );
+          })}
+        </section>
+      )}
+    </main>
   );
 }

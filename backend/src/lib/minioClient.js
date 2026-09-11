@@ -32,9 +32,24 @@ async function ensureBuckets() {
   }
 }
 
+async function removeObjectsWithPrefix(bucket, prefix) {
+  const names = [];
+  const objects = minioClient.listObjects(bucket, prefix, true);
+  for await (const object of objects) names.push(object.name);
+  if (names.length > 0) await minioClient.removeObjects(bucket, names);
+}
+
+async function resetVehicleAssets(vehicleId) {
+  await Promise.all([
+    removeObjectsWithPrefix(RAW_BUCKET, `${vehicleId}/`),
+    removeObjectsWithPrefix(PROCESSED_BUCKET, `${vehicleId}/`),
+  ]);
+}
+
 module.exports = {
   minioClient,
   RAW_BUCKET,
   PROCESSED_BUCKET,
   ensureBuckets,
+  resetVehicleAssets,
 };

@@ -1,23 +1,30 @@
 const express = require('express');
 const path = require('path');
+const fs = require('fs');
 const config = require('./config');
 const { ensureBuckets } = require('./lib/minioClient');
 const { initializeConsumerGroup } = require('./queues/photoQueue');
 const photoRoutes = require('./routes/photos');
 const viewerRoutes = require('./routes/viewer');
-const webhookRoutes = require('./routes/webhook');
 const internalRoutes = require('./routes/internal');
 const sessionsRoutes = require('./routes/sessions');
 
 const app = express();
 
+app.disable('x-powered-by');
 app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
 
 app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
+  res.set('X-Content-Type-Options', 'nosniff');
+  if (!req.path.startsWith('/viewer/')) res.set('X-Frame-Options', 'DENY');
+  res.set('Permissions-Policy', 'camera=(self), fullscreen=(self)');
+  next();
+});
+
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', config.allowedOrigin);
   res.header('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, X-Internal-Token');
   if (req.method === 'OPTIONS') {
     return res.sendStatus(200);
   }
@@ -25,12 +32,16 @@ app.use((req, res, next) => {
 });
 
 app.use('/api', photoRoutes);
-app.use('/api', webhookRoutes);
 app.use('/api', sessionsRoutes);
 app.use('/internal', internalRoutes);
 
 // Serve static frontend files
-const frontendDistPath = path.join(__dirname, '../frontend/dist');
+const frontendCandidates = [
+  process.env.FRONTEND_DIST_PATH,
+  path.join(__dirname, '../frontend/dist'),
+  path.join(__dirname, '../../frontend/dist'),
+].filter(Boolean);
+const frontendDistPath = frontendCandidates.find((candidate) => fs.existsSync(candidate)) || frontendCandidates[0];
 app.use(express.static(frontendDistPath, { 
   fallthrough: true,
   index: 'index.html'
@@ -46,7 +57,7 @@ app.use('/', viewerRoutes);
 
 // SPA fallback - serve index.html for client-side routes only.
 // API, internal, and viewer routes are already handled above.
-app.get('*', (req, res) => {
+app.get('/{*splat}', (req, res) => {
   res.sendFile(path.join(frontendDistPath, 'index.html'));
 });
 
@@ -54,13 +65,26 @@ async function start() {
   try {
     await ensureBuckets();
     await initializeConsumerGroup();
-    app.listen(config.port, () => {
+    const server = app.listen(config.port, () => {
       console.log(`Server running on port ${config.port}`);
     });
+
+    const shutdown = async () => {
+      server.close(async () => {
+        const prisma = require('./lib/prisma');
+        const redis = require('./lib/redisConnection');
+        await Promise.allSettled([prisma.$disconnect(), redis.quit()]);
+        process.exit(0);
+      });
+    };
+    process.once('SIGTERM', shutdown);
+    process.once('SIGINT', shutdown);
   } catch (error) {
     console.error('Failed to start server:', error);
     process.exit(1);
   }
 }
 
-start();
+if (require.main === module) start();
+
+module.exports = { app, start };

@@ -1,6 +1,7 @@
 from PIL import Image, ImageDraw, ImageFilter, ImageOps, ImageChops, ImageEnhance
 import numpy as np
 import os
+from functools import lru_cache
 
 # ─── Canvas constants ────────────────────────────────────────────────
 # Fixed canvas for ALL 36 frames → no jitter when the viewer flips frames.
@@ -54,7 +55,8 @@ def _find_wheel_bottom(alpha_arr, car_w):
     return h - 1
 
 
-def _make_background(cw, ch, ground_y):
+@lru_cache(maxsize=4)
+def _make_background_template(cw, ch, ground_y):
     """Paint a premium radial-spotlight studio gradient."""
     canvas = Image.new('RGB', (cw, ch), BG_TOP)
     draw   = ImageDraw.Draw(canvas)
@@ -98,6 +100,11 @@ def _make_background(cw, ch, ground_y):
     canvas.paste(top_img, (0,0))
 
     return canvas
+
+
+def _make_background(cw, ch, ground_y):
+    """Return an isolated copy of the cached studio background."""
+    return _make_background_template(cw, ch, ground_y).copy()
 
 
 def _draw_turntable(canvas, cw, ch):
@@ -213,8 +220,29 @@ def _draw_generative_shadow(canvas, cw, ch, car_x, car_y, vehicle):
     shadow_final = ImageChops.add(shadow_final, blur3)
     
     # 5b. Ambient Occlusion — tight dark shadow directly under the car
-    # This simulates the darkness where the car body blocks ambient light
-    ao_mask = Image.fromarray(padded, mode='L')  # Original unsheared mask
+    # To prevent a black halo around the roof/sides, only apply this to the bottom of the mask
+    ao_arr = np.copy(padded)
+
+    # Mask out everything except the bottom 25% of the car
+    # Find the car's vertical bounds in the padded array
+    nonzero_y = np.where(ao_arr.any(axis=1))[0]
+    if len(nonzero_y) > 0:
+        car_top = nonzero_y[0]
+        car_bottom = nonzero_y[-1]
+        car_h = car_bottom - car_top
+
+        # Zero out the top 75% of the car so only the wheels/underbody cast AO
+        ao_arr[:int(car_bottom - car_h * 0.25), :] = 0
+
+        # Soften the cutoff so it doesn't leave a hard line
+        fade_start = int(car_bottom - car_h * 0.25)
+        fade_end = int(car_bottom - car_h * 0.15)
+        for y in range(fade_start, min(fade_end, len(ao_arr))):
+            alpha_mult = (y - fade_start) / max(1, fade_end - fade_start)
+            ao_arr[y, :] = (ao_arr[y, :] * alpha_mult).astype(np.uint8)
+
+    ao_mask = Image.fromarray(ao_arr, mode='L')
+
     # Shift it down slightly and blur tightly
     ao_shifted = Image.new('L', (canvas_w, canvas_h), 0)
     ao_shifted.paste(ao_mask, (0, 8))  # 8px down
@@ -276,8 +304,8 @@ def create_studio_image(vehicle_image, global_max_h=None):
     Place vehicle onto a studio turntable.
 
     Key design decisions:
-    - Fixed canvas (2400 × 1350) for all 24 frames → no jitter
-    - Car scaled to 52% of canvas height → tires never clip
+    - Fixed canvas (2400 × 1350) for all 36 frames → no jitter
+    - Car scaled to 62% of canvas height → premium framing without clipping
     - Wheel-bottom row (not bbox bottom) aligned to platform top edge
       → car sits ON the turntable, never floats
     - LANCZOS resampling for sharpest edges

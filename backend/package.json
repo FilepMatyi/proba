@@ -4,21 +4,25 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "dev": "nodemon src/index.js"
+    "dev": "nodemon src/index.js",
+    "test": "node --test test/*.test.js",
+    "check": "node --check src/index.js && node --check src/routes/photos.js && node --check src/routes/viewer.js"
   },
   "dependencies": {
-    "express": "^4.18.2",
-    "multer": "^1.4.5-lts.1",
-    "minio": "^7.1.3",
-    "ioredis": "^5.3.2",
-    "uuid": "^9.0.1",
-    "dotenv": "^16.3.1",
     "@prisma/client": "^5.7.1",
     "axios": "^1.6.2",
-    "fluent-ffmpeg": "^2.1.3"
+    "dotenv": "^16.3.1",
+    "express": "^5.1.0",
+    "ioredis": "^5.3.2",
+    "minio": "^8.0.7",
+    "multer": "^2.0.2"
   },
   "devDependencies": {
     "nodemon": "^3.0.2",
     "prisma": "^5.7.1"
+  },
+  "overrides": {
+    "qs": "^6.15.4",
+    "stream-json": "^3.4.1"
   }
 }

@@ -1,115 +1,219 @@
-import { useState } from 'react';
-import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { BrowserRouter, Route, Routes, useNavigate } from 'react-router-dom';
+import { ArrowRight, Check, ChevronRight, Gauge, LayoutDashboard, Rotate3D, ShieldCheck, Sparkles } from 'lucide-react';
+
 import CameraView from './components/CameraView';
 import Dashboard from './components/Dashboard';
-import { uploadVideo } from './api/uploader';
+import { getSession, uploadVideo } from './api/uploader';
+import './styles.css';
+
+const VEHICLE_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/;
+
+const STAGE_LABELS = {
+  uploading: 'Feltöltés fogadása',
+  extracting: 'Képkockák kinyerése',
+  selecting: 'A legjobb nézetek kiválasztása',
+  composing: 'Prémium stúdióképek készítése',
+  ready: 'A 360° bemutató elkészült',
+};
+
+function sessionWarnings(session) {
+  if (Array.isArray(session?.qualityWarnings)) return session.qualityWarnings;
+  try {
+    const warnings = JSON.parse(session?.qualityWarnings || '[]');
+    return Array.isArray(warnings) ? warnings : [];
+  } catch {
+    return [];
+  }
+}
 
 function CaptureFlow() {
   const navigate = useNavigate();
   const [vehicleId, setVehicleId] = useState('');
-  
-  // States: 'HOME' | 'RECORDING' | 'UPLOADING' | 'DONE' | 'ERROR'
   const [appState, setAppState] = useState('HOME');
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [processingSession, setProcessingSession] = useState(null);
   const [errorMessage, setErrorMessage] = useState('');
 
-  const handleStart = () => {
-    if (vehicleId.trim()) {
-      setAppState('RECORDING');
-    }
+  const normalizedVehicleId = vehicleId.trim().toLowerCase();
+  const isVehicleIdValid = VEHICLE_ID_PATTERN.test(vehicleId.trim());
+
+  useEffect(() => {
+    if (appState !== 'PROCESSING' || !normalizedVehicleId) return undefined;
+
+    let active = true;
+    const refresh = async () => {
+      try {
+        const session = await getSession(normalizedVehicleId);
+        if (!active) return;
+        setProcessingSession(session);
+        if (session.status === 'failed') {
+          setErrorMessage(session.errorMessage || 'A képfeldolgozás nem fejeződött be.');
+          setAppState('ERROR');
+        }
+      } catch {
+        // A rövid hálózati kiesés ne szakítsa meg a feldolgozás képernyőjét.
+      }
+    };
+
+    refresh();
+    const timer = window.setInterval(refresh, 4000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [appState, normalizedVehicleId]);
+
+  const startCapture = () => {
+    if (isVehicleIdValid) setAppState('RECORDING');
   };
 
-  const handleVideoRecorded = async (videoBlob, sensorData) => {
+  const submitVideo = async (videoBlob, sensorData) => {
     setAppState('UPLOADING');
     setUploadProgress(0);
-    
     try {
-      await uploadVideo(vehicleId, videoBlob, sensorData, (progress) => {
-        setUploadProgress(progress);
-      });
-      setAppState('DONE');
+      await uploadVideo(normalizedVehicleId, videoBlob, sensorData, setUploadProgress);
+      setAppState('PROCESSING');
     } catch (error) {
       setErrorMessage(error.message);
       setAppState('ERROR');
     }
   };
 
-  if (appState === 'ERROR') {
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100dvh', backgroundColor: '#000', color: '#fff', padding: '20px', textAlign: 'center' }}>
-        <h2 style={{ color: '#F44336' }}>❌ Hiba történt!</h2>
-        <p style={{ marginTop: '20px' }}>{errorMessage}</p>
-        <button onClick={() => setAppState('HOME')} style={{ marginTop: '30px', padding: '12px 30px', backgroundColor: '#2196F3', color: '#fff', border: 'none', borderRadius: '10px', cursor: 'pointer' }}>
-          Újrapróbálkozás
-        </button>
-      </div>
-    );
-  }
-
-  if (appState === 'DONE') {
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100dvh', backgroundColor: '#000', color: '#fff', padding: '20px', textAlign: 'center' }}>
-        <h2 style={{ color: '#4CAF50' }}>✅ Sikeres feltöltés!</h2>
-        <p style={{ marginTop: '20px' }}>
-          A videó feltöltve! A szerver jelenleg is dolgozik a 360°-os forgatás generálásán.
-        </p>
-        <button onClick={() => navigate('/dashboard')} style={{ marginTop: '30px', padding: '12px 30px', backgroundColor: '#4CAF50', color: '#fff', border: 'none', borderRadius: '10px', cursor: 'pointer' }}>
-          Tovább a Dashboardra
-        </button>
-      </div>
-    );
+  if (appState === 'RECORDING') {
+    return <CameraView vehicleId={normalizedVehicleId} onCancel={() => setAppState('HOME')} onVideoRecorded={submitVideo} />;
   }
 
   if (appState === 'UPLOADING') {
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100dvh', backgroundColor: '#000', color: '#fff' }}>
-        <h2>Videó feltöltése folyamatban...</h2>
-        
-        {/* Simple Progress Bar */}
-        <div style={{ width: '80%', maxWidth: '300px', height: '20px', backgroundColor: '#333', borderRadius: '10px', marginTop: '30px', overflow: 'hidden' }}>
-          <div style={{ width: `${uploadProgress}%`, height: '100%', backgroundColor: '#4CAF50', transition: 'width 0.3s ease' }} />
+      <main className="status-screen">
+        <div className="status-card">
+          <div className="orb orb-upload"><span>{uploadProgress}%</span></div>
+          <p className="eyebrow">Biztonságos feltöltés</p>
+          <h1>A felvétel úton van</h1>
+          <p className="muted">Tartsd nyitva ezt az ablakot, amíg a feltöltés befejeződik.</p>
+          <div className="progress-track" aria-label={`Feltöltés ${uploadProgress}%`}>
+            <span style={{ width: `${uploadProgress}%` }} />
+          </div>
         </div>
-        <p style={{ marginTop: '10px', fontWeight: 'bold' }}>{uploadProgress}%</p>
-        
-        <p style={{ marginTop: '20px', color: '#888' }}>Ne zárd be az alkalmazást!</p>
-      </div>
+      </main>
     );
   }
 
-  if (appState === 'RECORDING') {
+  if (appState === 'PROCESSING') {
+    const completed = processingSession?.status === 'completed';
+    const warnings = sessionWarnings(processingSession);
+    const progress = processingSession
+      ? Math.round((processingSession.processedFrames / processingSession.totalFrames) * 100)
+      : 4;
     return (
-      <CameraView onVideoRecorded={handleVideoRecorded} />
+      <main className="status-screen">
+        <div className="status-card">
+          <div className={`orb ${completed ? 'orb-success' : 'orb-processing'}`}>
+            {completed ? <Check size={34} /> : <span>{progress}%</span>}
+          </div>
+          <p className="eyebrow">{completed ? 'Bemutatóra kész' : normalizedVehicleId}</p>
+          <h1>{completed ? 'Elkészült a prémium 360°' : STAGE_LABELS[processingSession?.stage] || 'A vizuális stúdió dolgozik'}</h1>
+          <p className="muted">
+            {completed
+              ? 'Mind a 36 nézet elkészült, a bemutató azonnal megosztható.'
+              : `${processingSession?.processedFrames || 0} / 36 végleges kép készült el. Ezt az oldalt már bezárhatod.`}
+          </p>
+          {processingSession?.qualityScore !== null && processingSession?.qualityScore !== undefined && (
+            <div className={`status-quality ${processingSession.qualityScore < 68 ? 'status-quality-review' : ''}`}>
+              <ShieldCheck size={17} />
+              <span>Automatikus képminőség</span>
+              <strong>{processingSession.qualityScore}/100</strong>
+            </div>
+          )}
+          {completed && warnings.length > 0 && <p className="status-quality-note">{warnings[0]}</p>}
+          {!completed && <div className="progress-track"><span style={{ width: `${progress}%` }} /></div>}
+          <div className="status-actions">
+            {completed && (
+              <a className="button button-primary" href={`/viewer/${normalizedVehicleId}`} target="_blank" rel="noreferrer">
+                360° megnyitása <ArrowRight size={18} />
+              </a>
+            )}
+            <button className="button button-secondary" onClick={() => navigate('/dashboard')}>
+              Dashboard <ChevronRight size={18} />
+            </button>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  if (appState === 'ERROR') {
+    return (
+      <main className="status-screen">
+        <div className="status-card status-card-error">
+          <div className="error-mark">!</div>
+          <p className="eyebrow">Beavatkozás szükséges</p>
+          <h1>A feldolgozás megállt</h1>
+          <p className="muted">{errorMessage}</p>
+          <div className="status-actions">
+            <button className="button button-primary" onClick={() => setAppState('HOME')}>Új felvétel</button>
+            <button className="button button-secondary" onClick={() => navigate('/dashboard')}>Dashboard</button>
+          </div>
+        </div>
+      </main>
     );
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100dvh', backgroundColor: '#000', color: '#fff', padding: '20px' }}>
-      <h1 style={{ marginBottom: '40px', textAlign: 'center' }}>VehicleShoot 360<br/><span style={{fontSize:'16px', color:'#4CAF50'}}>Premium Video Mode</span></h1>
-      
-      <input
-        type="text"
-        value={vehicleId}
-        onChange={(e) => setVehicleId(e.target.value)}
-        placeholder="Autó azonosító (pl. Lancer-16)"
-        style={{ padding: '15px 20px', fontSize: '18px', borderRadius: '10px', border: '2px solid #333', backgroundColor: '#222', color: '#fff', marginBottom: '20px', width: '100%', maxWidth: '300px', textAlign: 'center' }}
-      />
-      
-      <button
-        onClick={handleStart}
-        disabled={!vehicleId.trim()}
-        style={{ padding: '15px 40px', fontSize: '18px', backgroundColor: vehicleId.trim() ? '#4CAF50' : '#333', color: '#fff', border: 'none', borderRadius: '10px', cursor: vehicleId.trim() ? 'pointer' : 'not-allowed', transition: 'background-color 0.2s' }}
-      >
-        Videózás Indítása
-      </button>
+    <main className="home-shell">
+      <nav className="topbar">
+        <a className="brand" href="/" aria-label="VehicleShoot kezdőlap">
+          <span className="brand-mark"><Rotate3D size={20} /></span>
+          <span>VehicleShoot <b>360</b></span>
+        </a>
+        <button className="nav-button" onClick={() => navigate('/dashboard')}>
+          <LayoutDashboard size={17} /> Dashboard
+        </button>
+      </nav>
 
-      <button onClick={() => navigate('/dashboard')} style={{ marginTop: '30px', padding: '10px 20px', fontSize: '14px', backgroundColor: 'transparent', color: '#888', border: '1px solid #444', borderRadius: '10px', cursor: 'pointer' }}>
-        Admin Dashboard
-      </button>
-    </div>
+      <section className="capture-hero">
+        <div className="hero-copy">
+          <div className="live-pill"><span /> 36 nézet · egyetlen felvételből</div>
+          <h1>Prémium autóbemutató, <em>stúdió nélkül.</em></h1>
+          <p>Rögzíts egy egyenletes kört az autó körül. A rendszer kiválasztja és egységesíti a legjobb 36 képkockát.</p>
+
+          <form className="capture-form" onSubmit={(event) => { event.preventDefault(); startCapture(); }}>
+            <label htmlFor="vehicle-id">Autó azonosító</label>
+            <div className={`input-row ${vehicleId && !isVehicleIdValid ? 'input-row-error' : ''}`}>
+              <input
+                id="vehicle-id"
+                value={vehicleId}
+                onChange={(event) => setVehicleId(event.target.value)}
+                placeholder="például lancer-16"
+                autoCapitalize="none"
+                autoCorrect="off"
+                maxLength={64}
+              />
+              <button type="submit" disabled={!isVehicleIdValid} aria-label="Felvétel indítása">
+                <ArrowRight size={21} />
+              </button>
+            </div>
+            {vehicleId && !isVehicleIdValid && <small>Csak betű, szám, kötőjel és aláhúzás használható.</small>}
+          </form>
+        </div>
+
+        <div className="process-panel" aria-label="A feldolgozás lépései">
+          <div className="process-glow" />
+          <p className="panel-kicker">Automatikus vizuális pipeline</p>
+          <div className="process-list">
+            <div><span><Gauge size={20} /></span><p><b>Irányított felvétel</b><small>Szint- és mozgásadatokkal</small></p><i>01</i></div>
+            <div><span><Sparkles size={20} /></span><p><b>AI stúdiófeldolgozás</b><small>Egységes fény, méret és háttér</small></p><i>02</i></div>
+            <div><span><Rotate3D size={20} /></span><p><b>Interaktív 360°</b><small>Mobilra optimalizált, beágyazható</small></p><i>03</i></div>
+          </div>
+          <div className="trust-line"><ShieldCheck size={17} /> Eredeti részleteket megőrző feldolgozás</div>
+        </div>
+      </section>
+    </main>
   );
 }
 
-function App() {
+export default function App() {
   return (
     <BrowserRouter>
       <Routes>
@@ -119,5 +223,3 @@ function App() {
     </BrowserRouter>
   );
 }
-
-export default App;

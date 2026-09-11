@@ -1,678 +1,293 @@
+const crypto = require('crypto');
 const express = require('express');
+
+const config = require('../config');
 const { minioClient, PROCESSED_BUCKET } = require('../lib/minioClient');
+const { normalizeVehicleId, parsePhotoIndex } = require('../lib/vehicleId');
 
 const router = express.Router();
 
-router.get('/viewer/:vehicleId', async (req, res) => {
-  try {
-    const vehicleId = req.params.vehicleId.toLowerCase().trim();
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+}
 
-    const objects = minioClient.listObjects(
-      PROCESSED_BUCKET,
-      `${vehicleId}/processed-`,
-      false
-    );
+function safeJson(value) {
+  return JSON.stringify(value).replaceAll('<', '\\u003c');
+}
 
-    const imageData = [];
-    for await (const obj of objects) {
-      const filename = obj.name.split('/').pop();
-      imageData.push({
-        filename,
-        url: `/viewer/${vehicleId}/image/${encodeURIComponent(filename)}`
+async function listProcessedImages(vehicleId) {
+  const images = [];
+  const objects = minioClient.listObjects(PROCESSED_BUCKET, `${vehicleId}/processed-`, false);
+
+  for await (const object of objects) {
+    const fileName = object.name.split('/').pop();
+    const match = /^processed-(\d+)\.jpg$/.exec(fileName);
+    const index = match ? parsePhotoIndex(match[1], config.processing.targetFrames) : null;
+    if (index !== null) {
+      images.push({
+        index,
+        preview: `/viewer/${vehicleId}/image/preview-${index}.jpg`,
+        hd: `/viewer/${vehicleId}/image/processed-${index}.jpg`,
       });
     }
+  }
 
-    imageData.sort((a, b) => {
-      const indexA = parseInt(a.filename.match(/processed-(\d+)/)[1]);
-      const indexB = parseInt(b.filename.match(/processed-(\d+)/)[1]);
-      return indexA - indexB;
+  return images.sort((left, right) => left.index - right.index);
+}
+
+router.get('/viewer/:vehicleId', async (req, res) => {
+  try {
+    const vehicleId = normalizeVehicleId(req.params.vehicleId);
+    if (!vehicleId) return res.status(400).send('Invalid vehicle ID');
+
+    const images = await listProcessedImages(vehicleId);
+    const nonce = crypto.randomBytes(18).toString('base64');
+    const publicBaseUrl = config.baseUrl.replace(/\/$/, '');
+    const canonicalUrl = `${publicBaseUrl}/viewer/${vehicleId}`;
+    res.set('Content-Security-Policy', [
+      "default-src 'self'",
+      "img-src 'self' data:",
+      "style-src 'unsafe-inline'",
+      `script-src 'nonce-${nonce}'`,
+      "connect-src 'self'",
+      "frame-ancestors *",
+      "base-uri 'none'",
+      "form-action 'none'",
+    ].join('; '));
+    res.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+    return res.send(renderViewer({
+      vehicleId: escapeHtml(vehicleId),
+      imageSources: images.map(({ preview, hd }) => ({ preview, hd })),
+      nonce,
+      canonicalUrl: escapeHtml(canonicalUrl),
+      socialImageUrl: escapeHtml(`${publicBaseUrl}/viewer/${vehicleId}/image/processed-1.jpg`),
+    }));
+  } catch (error) {
+    console.error('Viewer generation failed:', error);
+    return res.status(500).send('A bemutató átmenetileg nem érhető el.');
+  }
+});
+
+router.get('/viewer/:vehicleId/image/:filename', async (req, res) => {
+  try {
+    const vehicleId = normalizeVehicleId(req.params.vehicleId);
+    const match = /^(processed|preview)-(\d+)\.jpg$/.exec(req.params.filename);
+    const photoIndex = match ? parsePhotoIndex(match[2], config.processing.targetFrames) : null;
+    if (!vehicleId || photoIndex === null) return res.status(400).end();
+
+    const variant = match[1];
+    const objectKey = `${vehicleId}/${variant}-${photoIndex}.jpg`;
+    const stats = await minioClient.statObject(PROCESSED_BUCKET, objectKey);
+    if (req.get('if-none-match') === stats.etag) return res.status(304).end();
+
+    res.set({
+      'Content-Type': 'image/jpeg',
+      'Content-Length': stats.size,
+      'Cache-Control': 'public, max-age=300, stale-while-revalidate=3600',
+      ETag: stats.etag,
     });
+    const stream = await minioClient.getObject(PROCESSED_BUCKET, objectKey);
+    stream.on('error', (error) => {
+      console.error('Viewer image stream failed:', error);
+      if (!res.headersSent) res.status(500).end();
+      else res.destroy(error);
+    });
+    return stream.pipe(res);
+  } catch (error) {
+    if (error.code === 'NoSuchKey' || error.code === 'NotFound') return res.status(404).end();
+    console.error('Viewer image failed:', error);
+    return res.status(500).end();
+  }
+});
 
-    const imageUrls = imageData.map(d => d.url);
+router.get('/embed.js', (req, res) => {
+  const configuredBase = config.baseUrl.replace(/\/$/, '');
+  res.type('application/javascript');
+  res.set('Cache-Control', 'public, max-age=3600');
+  return res.send(`(() => {
+    const baseUrl = ${safeJson(configuredBase)};
+    document.querySelectorAll('[data-vs360-vehicle]').forEach((container) => {
+      if (container.dataset.vs360Ready) return;
+      const vehicleId = container.getAttribute('data-vs360-vehicle');
+      if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/.test(vehicleId || '')) return;
+      const iframe = document.createElement('iframe');
+      iframe.src = baseUrl + '/viewer/' + encodeURIComponent(vehicleId);
+      iframe.title = '360° járműbemutató – ' + vehicleId;
+      iframe.loading = 'lazy';
+      iframe.allowFullscreen = true;
+      iframe.style.cssText = 'width:100%;height:min(72vw,720px);min-height:420px;border:0;border-radius:18px;overflow:hidden;background:#0a0c0d';
+      container.replaceChildren(iframe);
+      container.dataset.vs360Ready = 'true';
+    });
+  })();`);
+});
 
-    res.send(`
-<!DOCTYPE html>
-<html lang="en">
+function renderViewer({ vehicleId, imageSources, nonce, canonicalUrl, socialImageUrl }) {
+  return `<!doctype html>
+<html lang="hu">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>360° Vehicle Viewer - ${vehicleId}</title>
-  
-  <meta property="og:title" content="360° Vehicle Viewer - ${vehicleId}">
-  <meta property="og:description" content="Forgasd el az autót és nézd meg minden szögből!">
-  <meta property="og:image" content="${imageUrls.length > 0 ? imageUrls[0] : ''}">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+  <meta name="theme-color" content="#090b0c">
+  <meta name="description" content="${vehicleId} interaktív, 36 nézetes járműbemutatója.">
   <meta property="og:type" content="website">
-  <meta name="twitter:card" content="summary_large_image">
-
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <meta property="og:title" content="${vehicleId} · 360° bemutató">
+  <meta property="og:description" content="Forgasd körbe és nézd meg közelről a járművet.">
+  <meta property="og:url" content="${canonicalUrl}">
+  <meta property="og:image" content="${socialImageUrl}">
+  <link rel="canonical" href="${canonicalUrl}">
+  <title>${vehicleId} · 360° bemutató</title>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-
-    body {
-      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-      background: #111114;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      min-height: 100vh;
-      padding: 16px;
-      color: #ddd;
-    }
-
-    .viewer-wrapper {
-      width: 100%;
-      max-width: 1200px;
-    }
-
-    .viewer-container {
-      width: 100%;
-      background: #f4f4f6;
-      border-radius: 14px;
-      overflow: hidden;
-      box-shadow:
-        0 12px 48px rgba(0,0,0,0.5),
-        0 0 0 1px rgba(255,255,255,0.06);
-    }
-
-    /* ── Image Container ── */
-    .image-container {
-      position: relative;
-      width: 100%;
-      padding-top: 66%;
-      background: linear-gradient(180deg, #ececee 0%, #dcdce0 100%);
-      cursor: grab;
-      user-select: none;
-      -webkit-user-select: none;
-      touch-action: none;
-      overflow: hidden;
-    }
-    .image-container.grabbing { cursor: grabbing; }
-    .image-container.zoomed  { cursor: move; }
-
-    .image-container img {
-      position: absolute;
-      top: 0; left: 0;
-      width: 100%; height: 100%;
-      object-fit: contain;
-      opacity: 0;
-      transform-origin: center center;
-      will-change: transform, opacity;
-      pointer-events: none;
-    }
-    .image-container img.active { opacity: 1; }
-
-    /* ── Zoom Controls ── */
-    .controls {
-      position: absolute;
-      bottom: 14px;
-      right: 14px;
-      display: flex;
-      flex-direction: column;
-      gap: 5px;
-      z-index: 20;
-    }
-    .controls button {
-      width: 34px; height: 34px;
-      border: none;
-      border-radius: 8px;
-      background: rgba(0,0,0,0.50);
-      color: #fff;
-      font-size: 17px;
-      font-weight: 600;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      backdrop-filter: blur(10px);
-      -webkit-backdrop-filter: blur(10px);
-      transition: background 0.15s;
-      line-height: 1;
-    }
-    .controls button:hover  { background: rgba(0,0,0,0.70); }
-    .controls button:active { background: rgba(0,0,0,0.85); }
-    .controls button:disabled { opacity: 0.25; cursor: default; }
-
-    /* ── Zoom Badge ── */
-    .zoom-badge {
-      position: absolute;
-      top: 14px; right: 14px;
-      background: rgba(0,0,0,0.50);
-      color: #fff;
-      font-size: 11px; font-weight: 500;
-      padding: 3px 9px;
-      border-radius: 10px;
-      z-index: 20;
-      opacity: 0;
-      transition: opacity 0.3s;
-      backdrop-filter: blur(8px);
-      pointer-events: none;
-    }
-    .zoom-badge.visible { opacity: 1; }
-
-    /* ── Drag Hint ── */
-    .drag-hint {
-      position: absolute;
-      top: 50%; left: 50%;
-      transform: translate(-50%, -50%);
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 8px;
-      pointer-events: none;
-      transition: opacity 0.6s;
-      z-index: 10;
-    }
-    .drag-hint.hidden { opacity: 0; }
-    .drag-hint-icon  { font-size: 36px; color: rgba(0,0,0,0.18); }
-    .drag-hint-text  {
-      color: rgba(0,0,0,0.35);
-      font-size: 13px; font-weight: 500;
-      background: rgba(255,255,255,0.6);
-      padding: 5px 14px;
-      border-radius: 14px;
-      backdrop-filter: blur(4px);
-    }
-
-    /* ── Loading ── */
-    .loading-overlay {
-      position: absolute;
-      inset: 0;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      background: linear-gradient(180deg, #ececee 0%, #dcdce0 100%);
-      z-index: 30;
-      gap: 14px;
-    }
-    .loading-spinner {
-      width: 36px; height: 36px;
-      border: 3px solid #d0d0d0;
-      border-top-color: #666;
-      border-radius: 50%;
-      animation: spin 0.75s linear infinite;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    .loading-text { color: #888; font-size: 13px; }
-    .loading-bar {
-      width: 180px; height: 3px;
-      background: #d4d4d4;
-      border-radius: 2px;
-      overflow: hidden;
-    }
-    .loading-bar-fill {
-      height: 100%;
-      background: linear-gradient(90deg, #888, #555);
-      border-radius: 2px;
-      transition: width 0.3s;
-      width: 0%;
-    }
-
-    /* ── Info Bar ── */
-    .info-bar {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 12px 20px;
-      background: #1a1a1e;
-      color: #777;
-      font-size: 12px;
-      border-radius: 0 0 14px 14px;
-      border-top: 1px solid rgba(255,255,255,0.04);
-    }
-    .info-bar strong { color: #bbb; font-weight: 500; }
+    :root{color-scheme:dark;font-family:Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;--accent:#b8f15a;--ink:#f4f6f5;--muted:#8e9893}
+    *{box-sizing:border-box}html,body{margin:0;min-width:320px;min-height:100%;background:#090b0c;color:var(--ink);overflow:hidden}button,input{font:inherit}button:focus-visible,input:focus-visible,.stage:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+    .shell{height:100dvh;display:grid;grid-template-rows:auto minmax(0,1fr) auto;padding:max(18px,env(safe-area-inset-top)) max(18px,env(safe-area-inset-right)) max(16px,env(safe-area-inset-bottom)) max(18px,env(safe-area-inset-left));background:radial-gradient(circle at 50% -15%,rgba(184,241,90,.08),transparent 36%),#090b0c}
+    header{height:58px;display:flex;align-items:flex-start;justify-content:space-between;gap:18px}.brand{display:flex;align-items:center;gap:10px;font-size:12px;font-weight:750;letter-spacing:.02em}.mark{width:32px;height:32px;display:grid;place-items:center;color:#11170a;background:var(--accent);border-radius:10px}.brand span:last-child{display:grid;gap:2px}.brand small{color:var(--muted);font-size:9px;font-weight:650;letter-spacing:.11em;text-transform:uppercase}.badge{padding:8px 11px;border:1px solid rgba(255,255,255,.1);border-radius:999px;color:#cbd1ce;background:rgba(255,255,255,.035);font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+    .stage{position:relative;min-height:0;overflow:hidden;border:1px solid rgba(255,255,255,.1);border-radius:24px;background:linear-gradient(180deg,#edece9,#d9d9d5);box-shadow:0 28px 90px rgba(0,0,0,.42);touch-action:none;user-select:none;cursor:grab}.stage.grabbing{cursor:grabbing}.stage:fullscreen{border:0;border-radius:0}.frame{position:absolute;inset:0;display:grid;place-items:center;overflow:hidden}.frame img{position:absolute;width:100%;height:100%;object-fit:contain;opacity:0;transform-origin:center;pointer-events:none;will-change:transform,opacity}.frame img.active{opacity:1}
+    .loading{position:absolute;z-index:20;inset:0;display:grid;place-items:center;background:linear-gradient(180deg,#e8e7e4,#d9d9d5);color:#282d2a;transition:opacity .35s}.loading.hidden{opacity:0;pointer-events:none}.loading-inner{text-align:center}.spinner{width:40px;height:40px;margin:0 auto 15px;border:2px solid rgba(0,0,0,.12);border-top-color:#1e2521;border-radius:50%;animation:spin .8s linear infinite}.loading strong{display:block;font-size:13px}.loading small{display:block;margin-top:5px;color:#68706c;font-size:10px}
+    .empty{position:absolute;z-index:21;inset:0;display:none;place-items:center;text-align:center;color:#222824;padding:30px}.empty.visible{display:grid}.empty-icon{width:54px;height:54px;margin:0 auto 16px;display:grid;place-items:center;border:1px solid rgba(0,0,0,.13);border-radius:16px;font-size:24px}.empty h1{margin:0 0 8px;font-size:24px;letter-spacing:-.04em}.empty p{max-width:360px;margin:0;color:#68706c;font-size:12px;line-height:1.55}.empty small{display:block;margin-top:12px;color:#858d89;font-size:9px}
+    .hint{position:absolute;z-index:8;left:50%;bottom:58px;transform:translateX(-50%);display:flex;align-items:center;gap:8px;padding:9px 13px;color:#303632;background:rgba(255,255,255,.76);border:1px solid rgba(0,0,0,.07);border-radius:999px;box-shadow:0 5px 22px rgba(0,0,0,.09);backdrop-filter:blur(10px);font-size:10px;font-weight:750;white-space:nowrap;transition:opacity .35s}.hint.hidden{opacity:0;pointer-events:none}.hint i{font-style:normal;font-size:15px}
+    .controls{position:absolute;z-index:10;top:15px;right:15px;display:grid;gap:7px}.controls button{width:38px;height:38px;display:grid;place-items:center;border:1px solid rgba(0,0,0,.08);border-radius:11px;color:#242a26;background:rgba(255,255,255,.76);backdrop-filter:blur(10px);cursor:pointer;font-size:15px;font-weight:750;transition:transform .16s,background .16s}.controls button:disabled{opacity:.3;cursor:default}.controls button[aria-pressed="true"]{color:#11170a;background:var(--accent)}
+    .timeline{position:absolute;z-index:9;left:50%;bottom:17px;transform:translateX(-50%);width:min(66%,520px);height:28px;display:flex;align-items:center;padding:0 11px;background:rgba(255,255,255,.7);border:1px solid rgba(0,0,0,.08);border-radius:999px;backdrop-filter:blur(10px)}.timeline input{width:100%;height:3px;margin:0;accent-color:#28322c;cursor:ew-resize}.toast{position:absolute;z-index:12;top:16px;left:50%;transform:translate(-50%,-12px);padding:9px 12px;color:#202621;background:rgba(255,255,255,.9);border-radius:999px;box-shadow:0 8px 30px rgba(0,0,0,.12);font-size:10px;font-weight:750;opacity:0;pointer-events:none;transition:.2s}.toast.visible{opacity:1;transform:translate(-50%,0)}
+    footer{height:62px;padding-top:17px;display:flex;align-items:flex-end;justify-content:space-between;gap:18px;color:var(--muted);font-size:10px}.vehicle{min-width:0;display:grid;gap:3px}.vehicle small{font-size:8px;font-weight:750;letter-spacing:.12em;text-transform:uppercase}.vehicle strong{overflow:hidden;text-overflow:ellipsis;color:#dfe4e1;font-size:12px;letter-spacing:.02em}.counter{font-variant-numeric:tabular-nums;font-weight:750}.counter b{color:var(--accent);font-weight:800}.quality{display:flex;align-items:center;gap:7px}.quality span{width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 9px var(--accent)}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    @media(hover:hover){.controls button:hover:not(:disabled){transform:translateY(-1px);background:white}}
+    @media(max-width:600px){.shell{padding:12px}.stage{border-radius:18px}header{height:52px}.badge{display:none}.hint{bottom:54px}.controls{top:10px;right:10px}.controls button{width:36px;height:36px}.timeline{bottom:13px;width:74%}footer{height:55px}.quality{display:none}}
+    @media(prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;animation-iteration-count:1!important;scroll-behavior:auto!important}}
   </style>
 </head>
 <body>
-
-<div class="viewer-wrapper">
-  <div class="viewer-container">
-    <div class="image-container" id="imageContainer">
-
-      <div class="loading-overlay" id="loadingOverlay">
-        <div class="loading-spinner"></div>
-        <div class="loading-text" id="loadingText">Loading images…</div>
-        <div class="loading-bar"><div class="loading-bar-fill" id="loadingBarFill"></div></div>
+  <main class="shell">
+    <header>
+      <div class="brand"><span class="mark">360°</span><span>VehicleShoot<small>Interactive presentation</small></span></div>
+      <div class="badge">36 nézet · adaptív HD</div>
+    </header>
+    <section class="stage" id="stage" aria-label="Forgatható és nagyítható 360 fokos járműbemutató" tabindex="0">
+      <div class="frame" id="frame"></div>
+      <div class="loading" id="loading"><div class="loading-inner"><div class="spinner"></div><strong>Bemutató betöltése</strong><small id="loadingText">Első nézet előkészítése</small></div></div>
+      <div class="empty" id="empty"><div><div class="empty-icon">↻</div><h1>A bemutató készül</h1><p>A képek feldolgozása még folyamatban van. Az oldal automatikusan megnyílik, amikor elkészült.</p><small>Állapot ellenőrzése…</small></div></div>
+      <div class="hint" id="hint"><i>↔</i> Húzd oldalra · csippents a nagyításhoz</div>
+      <div class="toast" id="toast" role="status" aria-live="polite"></div>
+      <div class="controls">
+        <button type="button" id="play" title="Automatikus forgatás" aria-label="Automatikus forgatás" aria-pressed="false">▶</button>
+        <button type="button" id="zoomIn" title="Nagyítás" aria-label="Nagyítás">＋</button>
+        <button type="button" id="zoomOut" title="Kicsinyítés" aria-label="Kicsinyítés" disabled>−</button>
+        <button type="button" id="reset" title="Nézet visszaállítása" aria-label="Nézet visszaállítása">↺</button>
+        <button type="button" id="share" title="Megosztás" aria-label="Bemutató megosztása">↗</button>
+        <button type="button" id="fullscreen" title="Teljes képernyő" aria-label="Teljes képernyő">⛶</button>
       </div>
+      <label class="timeline" aria-label="Nézet kiválasztása"><input id="scrubber" type="range" min="0" max="${Math.max(imageSources.length - 1, 0)}" value="0" step="1"></label>
+    </section>
+    <footer>
+      <div class="vehicle"><small>Jármű</small><strong>${vehicleId}</strong></div>
+      <div class="counter" aria-live="polite"><b id="current">01</b> / ${String(imageSources.length).padStart(2, '0')}</div>
+      <div class="quality"><span></span> Ellenőrzött képsorozat</div>
+    </footer>
+  </main>
+  <script nonce="${nonce}">
+    (() => {
+      const sources=${safeJson(imageSources)};
+      const stage=document.getElementById('stage');
+      const frame=document.getElementById('frame');
+      const loading=document.getElementById('loading');
+      const loadingText=document.getElementById('loadingText');
+      const empty=document.getElementById('empty');
+      const hint=document.getElementById('hint');
+      const toast=document.getElementById('toast');
+      const current=document.getElementById('current');
+      const playButton=document.getElementById('play');
+      const zoomIn=document.getElementById('zoomIn');
+      const zoomOut=document.getElementById('zoomOut');
+      const resetButton=document.getElementById('reset');
+      const shareButton=document.getElementById('share');
+      const fullscreen=document.getElementById('fullscreen');
+      const scrubber=document.getElementById('scrubber');
+      const reducedMotion=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const images=[];
+      const loaded=new Set();
+      const pointers=new Map();
+      let index=0,desiredIndex=0,rotation=0,zoom=1,panX=0,panY=0,velocity=0;
+      let lastX=0,lastY=0,pinchDistance=0,autoplay=!reducedMotion,lastFrame=performance.now(),toastTimer;
 
-      <div class="drag-hint" id="dragHint">
-        <div class="drag-hint-icon">↔</div>
-        <div class="drag-hint-text">Drag to rotate · Scroll to zoom</div>
-      </div>
+      function flash(message){window.clearTimeout(toastTimer);toast.textContent=message;toast.classList.add('visible');toastTimer=window.setTimeout(()=>toast.classList.remove('visible'),1800)}
+      function setAutoplay(next){autoplay=Boolean(next)&&!reducedMotion;playButton.textContent=autoplay?'Ⅱ':'▶';playButton.setAttribute('aria-pressed',String(autoplay))}
+      function interact(){setAutoplay(false);hint.classList.add('hidden')}
+      function normalize(next){return ((next%sources.length)+sources.length)%sources.length}
+      function clampPan(){const maxX=stage.clientWidth*(zoom-1)/2,maxY=stage.clientHeight*(zoom-1)/2;panX=Math.max(-maxX,Math.min(maxX,panX));panY=Math.max(-maxY,Math.min(maxY,panY))}
+      function applyTransform(){clampPan();images.forEach(img=>{img.style.transform='translate('+panX+'px,'+panY+'px) scale('+zoom+')'})}
+      function upgrade(position){if(!sources[position]||images[position].dataset.hd==='true')return;const high=new Image();high.onload=()=>{images[position].src=sources[position].hd;images[position].dataset.hd='true'};high.src=sources[position].hd}
+      function show(next){
+        if(!sources.length)return;
+        desiredIndex=normalize(next);
+        if(!loaded.has(desiredIndex)){loadPreview(desiredIndex);return}
+        index=desiredIndex;
+        images.forEach((img,i)=>img.classList.toggle('active',i===index));
+        current.textContent=String(index+1).padStart(2,'0');scrubber.value=String(index);
+        upgrade(index);upgrade(normalize(index-1));upgrade(normalize(index+1));
+      }
+      function markLoaded(position){if(loaded.has(position))return;loaded.add(position);loadingText.textContent=loaded.size+' / '+sources.length+' gyorsnézet';if(loaded.size===1){show(desiredIndex);loading.classList.add('hidden')}if(loaded.size===sources.length)loading.classList.add('hidden')}
+      function loadPreview(position){
+        const img=images[position];if(!img||img.dataset.started==='true')return;img.dataset.started='true';
+        img.onload=()=>{markLoaded(position);if(position===desiredIndex)show(position)};
+        img.onerror=()=>{if(img.dataset.fallback!=='true'){img.dataset.fallback='true';img.dataset.hd='true';img.src=sources[position].hd}else markLoaded(position)};
+        img.src=sources[position].preview;
+      }
+      function loadImages(){
+        sources.forEach((source,i)=>{const img=new Image();img.alt='${vehicleId} – '+(i+1)+'. nézet';img.draggable=false;img.decoding='async';images.push(img);frame.appendChild(img)});
+        [0,1,sources.length-1,2,sources.length-2].forEach(position=>{if(position>=0)loadPreview(position)});
+        const loadRest=()=>sources.forEach((_,i)=>window.setTimeout(()=>loadPreview(i),i*18));
+        if('requestIdleCallback' in window)window.requestIdleCallback(loadRest,{timeout:700});else window.setTimeout(loadRest,120);
+      }
+      function setZoom(next){zoom=Math.max(1,Math.min(4,next));if(zoom===1){panX=0;panY=0}zoomOut.disabled=zoom===1;applyTransform()}
+      function resetView(){interact();rotation=index;setZoom(1);show(index);flash('Nézet visszaállítva')}
+      function pointerDistance(){const values=[...pointers.values()];return values.length<2?0:Math.hypot(values[0].x-values[1].x,values[0].y-values[1].y)}
 
-      <div class="zoom-badge" id="zoomBadge">1.0×</div>
-
-      <div class="controls" id="controls">
-        <button id="fullscreenBtn" title="Fullscreen" style="font-size:16px">⛶</button>
-        <button id="zoomInBtn"    title="Zoom in">+</button>
-        <button id="zoomOutBtn"   title="Zoom out" disabled>−</button>
-        <button id="zoomResetBtn" title="Reset" disabled style="font-size:12px">⟲</button>
-      </div>
-    </div>
-  </div>
-
-  <div class="info-bar">
-    <span><strong>Vehicle:</strong> ${vehicleId}</span>
-    <span><strong>Frames:</strong> ${imageUrls.length}</span>
-  </div>
-</div>
-
-<script>
-  const imageUrls = ${JSON.stringify(imageUrls)};
-  let currentIndex  = 0;
-  let isDragging     = false;
-  let startX = 0, startY = 0;
-  let hasInteracted  = false;
-  const PX_PER_FRAME = 25; // Slower manual rotation for better control
-
-  /* ── Interaction & Inertia State ── */
-  let virtualRotation = 0; // Floating point rotation state
-  let velocity = 0;
-  let lastTimestamp = 0;
-  let lastMouseX = 0;
-  let autoplaySpeed = 0.005; // Nagyon lassú, prémium forgás
-  let isAutoplay = true;
-  let animationFrameId = null;
-
-  /* ── Zoom state ── */
-  let zoomLevel = 1;
-  let panX = 0, panY = 0;
-  const MIN_ZOOM  = 1;
-  const MAX_ZOOM  = 4;
-  const ZOOM_STEP = 0.35;
-  let badgeTimer  = null;
-
-  const $container  = document.getElementById('imageContainer');
-  const $hint       = document.getElementById('dragHint');
-  const $overlay    = document.getElementById('loadingOverlay');
-  const $loadTxt    = document.getElementById('loadingText');
-  const $loadBar    = document.getElementById('loadingBarFill');
-  const $badge      = document.getElementById('zoomBadge');
-  const $fullscreen = document.getElementById('fullscreenBtn');
-  const $zoomIn     = document.getElementById('zoomInBtn');
-  const $zoomOut    = document.getElementById('zoomOutBtn');
-  const $zoomReset  = document.getElementById('zoomResetBtn');
-
-  /* ═══════════════ Progressive Lazy Loader ═══════════════ */
-  const BATCH_SIZE = 4; // Load 4 images at a time in background
-  let allImgsReady = false;
-
-  function preloadImages() {
-    const total = imageUrls.length;
-    if (total === 0) {
-      $loadTxt.textContent = 'No processed images yet — check back shortly';
-      return;
-    }
-
-    // Create all img elements (but don't set src yet)
-    imageUrls.forEach((url, i) => {
-      const img = document.createElement('img');
-      img.alt = 'View ' + (i + 1);
-      img.dataset.index = i;
-      img.dataset.src = url; // Store URL but don't load yet
-      img.draggable = false;
-      $container.appendChild(img);
-    });
-
-    // Phase 1: Load ONLY the hero frame (index 0) immediately
-    $loadTxt.textContent = 'Loading hero frame…';
-    const heroImg = $container.querySelector('img[data-index="0"]');
-    heroImg.onload = () => {
-      $container.style.paddingTop =
-        ((heroImg.naturalHeight / heroImg.naturalWidth) * 100) + '%';
-      heroImg.classList.add('active');
-      $overlay.style.display = 'none';
-      currentIndex = 0;
-      startAnimationLoop();
-
-      // Phase 2: Load remaining frames progressively in background
-      loadRemainingFrames();
-    };
-    heroImg.onerror = () => {
-      $overlay.style.display = 'none';
-      loadRemainingFrames();
-    };
-    heroImg.src = imageUrls[0]; // Start loading hero frame
-  }
-
-  function loadRemainingFrames() {
-    const imgs = $container.querySelectorAll('img');
-    const remaining = [];
-    imgs.forEach((img, i) => {
-      if (i !== 0) remaining.push(img); // Skip hero (already loaded)
-    });
-
-    let loaded = 1; // Hero already loaded
-    const total = imageUrls.length;
-
-    function loadBatch(startIdx) {
-      const batch = remaining.slice(startIdx, startIdx + BATCH_SIZE);
-      if (batch.length === 0) {
-        allImgsReady = true;
+      if(!sources.length){
+        loading.classList.add('hidden');empty.classList.add('visible');[playButton,zoomIn,zoomOut,resetButton,shareButton,scrubber].forEach(control=>control.disabled=true);
+        const poll=window.setInterval(async()=>{try{const response=await fetch('/api/sessions/${vehicleId}',{cache:'no-store'});if(response.ok&&(await response.json()).status==='completed'){window.clearInterval(poll);location.reload()}}catch{}},7000);
         return;
       }
 
-      let batchDone = 0;
-      batch.forEach(img => {
-        const onDone = () => {
-          loaded++;
-          batchDone++;
-          // Update a subtle progress indicator in the info bar
-          const pct = Math.round((loaded / total) * 100);
-          const infoSpan = document.querySelector('.info-bar span:last-child');
-          if (infoSpan && pct < 100) {
-            infoSpan.innerHTML = '<strong>Loading:</strong> ' + pct + '%';
-          } else if (infoSpan) {
-            infoSpan.innerHTML = '<strong>Frames:</strong> ' + total;
-          }
-          if (batchDone === batch.length) {
-            // Use requestIdleCallback (or setTimeout fallback) to avoid blocking
-            if (typeof requestIdleCallback === 'function') {
-              requestIdleCallback(() => loadBatch(startIdx + BATCH_SIZE));
-            } else {
-              setTimeout(() => loadBatch(startIdx + BATCH_SIZE), 50);
-            }
-          }
-        };
-        img.onload = onDone;
-        img.onerror = onDone;
-        img.src = img.dataset.src; // Start loading
+      stage.addEventListener('pointerdown',event=>{if(event.target.closest('button,input'))return;pointers.set(event.pointerId,{x:event.clientX,y:event.clientY});stage.setPointerCapture(event.pointerId);lastX=event.clientX;lastY=event.clientY;velocity=0;stage.classList.add('grabbing');interact();if(pointers.size===2)pinchDistance=pointerDistance()});
+      stage.addEventListener('pointermove',event=>{
+        if(!pointers.has(event.pointerId))return;
+        pointers.set(event.pointerId,{x:event.clientX,y:event.clientY});
+        if(pointers.size>=2){const distance=pointerDistance();if(pinchDistance>0)setZoom(zoom*distance/pinchDistance);pinchDistance=distance;return}
+        const dx=event.clientX-lastX,dy=event.clientY-lastY;
+        if(zoom===1){rotation+=dx/16;velocity=dx/16;show(Math.round(rotation))}else{panX+=dx;panY+=dy;applyTransform()}
+        lastX=event.clientX;lastY=event.clientY;
       });
-    }
-
-    loadBatch(0);
-  }
-
-  /* ═══════════════ Show / Rotate ═══════════════ */
-  function showImage(idx) {
-    if (idx < 0) idx = imageUrls.length - 1;
-    else if (idx >= imageUrls.length) idx = 0;
-    
-    if (currentIndex === idx) return; // No change
-    
-    const imgs = $container.querySelectorAll('img');
-    imgs.forEach(im => im.classList.remove('active'));
-    if (imgs[idx]) imgs[idx].classList.add('active');
-    currentIndex = idx;
-  }
-
-  function setVirtualRotation(val) {
-    virtualRotation = val;
-    // Calculate current frame index based on rotation
-    const numFrames = imageUrls.length;
-    let idx = Math.floor(virtualRotation) % numFrames;
-    if (idx < 0) idx += numFrames;
-    showImage(numFrames - 1 - idx); // Reverse direction so dragging right rotates car left
-  }
-
-  /* ═══════════════ Animation Loop ═══════════════ */
-  function startAnimationLoop() {
-    lastTimestamp = performance.now();
-    animationFrameId = requestAnimationFrame(animationLoop);
-  }
-
-  function animationLoop(timestamp) {
-    const dt = timestamp - lastTimestamp;
-    lastTimestamp = timestamp;
-
-    if (isAutoplay && !isDragging) {
-      // Autoplay: rotate at constant speed
-      setVirtualRotation(virtualRotation + autoplaySpeed * dt);
-    } else if (!isDragging && Math.abs(velocity) > 0.01) {
-      // Inertia: apply velocity and decay
-      setVirtualRotation(virtualRotation + velocity * dt);
-      velocity *= 0.92; // Friction
-    } else if (!isDragging) {
-      velocity = 0;
-    }
-
-    animationFrameId = requestAnimationFrame(animationLoop);
-  }
-
-  function interact() {
-    if (!hasInteracted) { 
-      hasInteracted = true; 
-      $hint.classList.add('hidden'); 
-    }
-    isAutoplay = false; // Stop autoplay on any interaction
-  }
-
-  /* ═══════════════ Zoom helpers ═══════════════ */
-  function updateTransform() {
-    const t = 'scale(' + zoomLevel + ') translate(' + panX + 'px,' + panY + 'px)';
-    $container.querySelectorAll('img').forEach(im => { im.style.transform = t; });
-
-    const isZ = zoomLevel > 1.01;
-    $container.classList.toggle('zoomed', isZ);
-    $zoomIn.disabled    = zoomLevel >= MAX_ZOOM;
-    $zoomOut.disabled   = zoomLevel <= MIN_ZOOM;
-    $zoomReset.disabled = !isZ;
-
-    $badge.textContent = zoomLevel.toFixed(1) + '×';
-    $badge.classList.add('visible');
-    clearTimeout(badgeTimer);
-    badgeTimer = setTimeout(() => $badge.classList.remove('visible'), 1200);
-  }
-
-  function clampPan() {
-    const r = $container.getBoundingClientRect();
-    const mx = (zoomLevel - 1) * r.width  / (2 * zoomLevel);
-    const my = (zoomLevel - 1) * r.height / (2 * zoomLevel);
-    panX = Math.max(-mx, Math.min(mx, panX));
-    panY = Math.max(-my, Math.min(my, panY));
-  }
-
-  function setZoom(z) {
-    zoomLevel = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, z));
-    if (zoomLevel <= 1.01) { zoomLevel = 1; panX = 0; panY = 0; }
-    clampPan();
-    updateTransform();
-  }
-
-  function hideHint() {
-    interact();
-  }
-
-  /* ═══════════════ Controls ═══════════════ */
-  $fullscreen.onclick = e => {
-    e.stopPropagation(); interact();
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().catch(err => {
-        console.error("Error attempting to enable fullscreen:", err);
+      function release(event){pointers.delete(event.pointerId);if(pointers.size<2)pinchDistance=0;if(!pointers.size)stage.classList.remove('grabbing');else{const point=[...pointers.values()][0];lastX=point.x;lastY=point.y}}
+      stage.addEventListener('pointerup',release);stage.addEventListener('pointercancel',release);
+      stage.addEventListener('wheel',event=>{event.preventDefault();interact();setZoom(zoom+(event.deltaY<0?.25:-.25))},{passive:false});
+      stage.addEventListener('dblclick',()=>{interact();setZoom(zoom>1?1:2)});
+      stage.addEventListener('keydown',event=>{
+        if(event.target===scrubber)return;
+        if(event.key==='ArrowRight'||event.key==='ArrowLeft'){event.preventDefault();interact();rotation+=event.key==='ArrowRight'?1:-1;show(Math.round(rotation))}
+        else if(event.key==='+'||event.key==='='){event.preventDefault();interact();setZoom(zoom+.35)}
+        else if(event.key==='-'){event.preventDefault();interact();setZoom(zoom-.35)}
+        else if(event.key==='Home'){event.preventDefault();resetView()}
+        else if(event.key===' '){event.preventDefault();setAutoplay(!autoplay)}
       });
-    } else {
-      document.exitFullscreen();
-    }
-  };
-  
-  $zoomIn.onclick    = e => { e.stopPropagation(); interact(); setZoom(zoomLevel + ZOOM_STEP); };
-  $zoomOut.onclick   = e => { e.stopPropagation(); interact(); setZoom(zoomLevel - ZOOM_STEP); };
-  $zoomReset.onclick = e => { e.stopPropagation(); interact(); setZoom(1); };
-
-  /* Scroll wheel */
-  $container.addEventListener('wheel', e => {
-    e.preventDefault(); hideHint();
-    setZoom(zoomLevel + (e.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP));
-  }, { passive: false });
-
-  /* ═══════════════ Mouse events ═══════════════ */
-  $container.addEventListener('mousedown', e => {
-    if (e.target.closest('.controls')) return;
-    isDragging = true; startX = e.clientX; startY = e.clientY;
-    lastMouseX = e.clientX;
-    lastTimestamp = performance.now();
-    velocity = 0;
-    $container.classList.add('grabbing'); interact();
-  });
-
-  $container.addEventListener('mousemove', e => {
-    if (!isDragging) return;
-    if (zoomLevel > 1.01) {
-      panX += (e.clientX - startX) / zoomLevel;
-      panY += (e.clientY - startY) / zoomLevel;
-      clampPan(); updateTransform();
-      startX = e.clientX; startY = e.clientY;
-    } else {
-      const dt = performance.now() - lastTimestamp;
-      const dx = e.clientX - lastMouseX;
-      
-      // Calculate rotation change (pixels -> frames)
-      const dFrames = dx / PX_PER_FRAME;
-      setVirtualRotation(virtualRotation + dFrames);
-      
-      if (dt > 0) {
-        velocity = dFrames / dt;
-      }
-      
-      lastMouseX = e.clientX;
-      lastTimestamp = performance.now();
-    }
-  });
-
-  $container.addEventListener('mouseup',    () => { isDragging = false; $container.classList.remove('grabbing'); });
-  $container.addEventListener('mouseleave', () => { isDragging = false; $container.classList.remove('grabbing'); });
-
-  /* ═══════════════ Touch events ═══════════════ */
-  let pinchDist = 0, pinchZoom = 1;
-
-  $container.addEventListener('touchstart', e => {
-    if (e.touches.length === 2) {
-      pinchDist = Math.hypot(
-        e.touches[0].clientX - e.touches[1].clientX,
-        e.touches[0].clientY - e.touches[1].clientY);
-      pinchZoom = zoomLevel;
-    } else if (e.touches.length === 1) {
-      isDragging = true;
-      startX = e.touches[0].clientX; startY = e.touches[0].clientY;
-      lastMouseX = e.touches[0].clientX;
-      lastTimestamp = performance.now();
-      velocity = 0;
-      $container.classList.add('grabbing'); interact();
-    }
-  });
-
-  $container.addEventListener('touchmove', e => {
-    e.preventDefault();
-    if (e.touches.length === 2) {
-      const d = Math.hypot(
-        e.touches[0].clientX - e.touches[1].clientX,
-        e.touches[0].clientY - e.touches[1].clientY);
-      setZoom(pinchZoom * (d / pinchDist));
-    } else if (e.touches.length === 1 && isDragging) {
-      const tx = e.touches[0].clientX, ty = e.touches[0].clientY;
-      if (zoomLevel > 1.01) {
-        panX += (tx - startX) / zoomLevel;
-        panY += (ty - startY) / zoomLevel;
-        clampPan(); updateTransform();
-        startX = tx; startY = ty;
-      } else {
-        const dt = performance.now() - lastTimestamp;
-        const dx = tx - lastMouseX;
-        
-        const dFrames = dx / PX_PER_FRAME;
-        setVirtualRotation(virtualRotation + dFrames);
-        
-        if (dt > 0) {
-          velocity = dFrames / dt;
-        }
-        
-        lastMouseX = tx;
-        lastTimestamp = performance.now();
-      }
-    }
-  }, { passive: false });
-
-  $container.addEventListener('touchend', () => {
-    isDragging = false; $container.classList.remove('grabbing');
-  });
-
-  /* ═══════════════ Double-click / tap to toggle zoom ═══════════════ */
-  let lastTap = 0;
-  $container.addEventListener('click', e => {
-    if (e.target.closest('.controls')) return;
-    const now = Date.now();
-    if (now - lastTap < 300) { setZoom(zoomLevel > 1.01 ? 1 : 2.5); }
-    lastTap = now;
-  });
-
-  /* ═══════════════ Keyboard ═══════════════ */
-  document.addEventListener('keydown', e => {
-    switch (e.key) {
-      case 'ArrowLeft':  interact(); setVirtualRotation(virtualRotation - 1); break;
-      case 'ArrowRight': interact(); setVirtualRotation(virtualRotation + 1); break;
-      case '+': case '=': interact(); setZoom(zoomLevel + ZOOM_STEP); break;
-      case '-':           interact(); setZoom(zoomLevel - ZOOM_STEP); break;
-      case '0':           interact(); setZoom(1); break;
-    }
-  });
-
-  /* ═══════════════ Init ═══════════════ */
-  preloadImages();
-</script>
+      playButton.addEventListener('click',()=>{setAutoplay(!autoplay);hint.classList.add('hidden')});
+      zoomIn.addEventListener('click',()=>{interact();setZoom(zoom+.35)});zoomOut.addEventListener('click',()=>{interact();setZoom(zoom-.35)});
+      resetButton.addEventListener('click',resetView);
+      scrubber.addEventListener('input',event=>{interact();rotation=Number(event.target.value);show(rotation)});
+      shareButton.addEventListener('click',async()=>{try{if(navigator.share)await navigator.share({title:document.title,url:location.href});else{await navigator.clipboard.writeText(location.href);flash('Link a vágólapra másolva')}}catch(error){if(error.name!=='AbortError')flash('A megosztás nem sikerült')}});
+      fullscreen.addEventListener('click',()=>{if(document.fullscreenElement)document.exitFullscreen();else stage.requestFullscreen?.()});
+      window.addEventListener('resize',applyTransform);
+      function animate(now){const dt=Math.min(now-lastFrame,40);lastFrame=now;if(!pointers.size&&zoom===1&&document.visibilityState==='visible'){if(autoplay&&loaded.size>=5)velocity=.00075*dt;else velocity*=.91;if(Math.abs(velocity)>.002){rotation+=velocity;show(Math.round(rotation))}}requestAnimationFrame(animate)}
+      if(sources.length<${config.processing.targetFrames}){const completionPoll=window.setInterval(async()=>{try{const response=await fetch('/api/sessions/${vehicleId}',{cache:'no-store'});if(response.ok&&(await response.json()).status==='completed'){window.clearInterval(completionPoll);location.reload()}}catch{}},7000)}
+      loadImages();setAutoplay(autoplay);requestAnimationFrame(animate);window.setTimeout(()=>hint.classList.add('hidden'),5500);
+    })();
+  </script>
 </body>
-</html>
-    `);
-  } catch (error) {
-    console.error('Error serving viewer:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// ─────────────────────────────────────────────────────────────────────
-// Image proxy — streams processed images from MinIO through the backend.
-// Eliminates the need to expose MinIO directly and fixes the localhost
-// presigned URL issue when viewing from external devices.
-// ─────────────────────────────────────────────────────────────────────
-router.get('/viewer/:vehicleId/image/:filename', async (req, res) => {
-  try {
-    const vehicleId = req.params.vehicleId.toLowerCase().trim();
-    const filename = decodeURIComponent(req.params.filename);
-    const objectKey = `${vehicleId}/${filename}`;
-
-    const stream = await minioClient.getObject(PROCESSED_BUCKET, objectKey);
-    res.setHeader('Content-Type', 'image/jpeg');
-    res.setHeader('Cache-Control', 'public, max-age=604800');
-    stream.on('error', (err) => {
-      console.error('Stream error:', err.message);
-      if (!res.headersSent) {
-        res.status(500).json({ error: 'Failed to stream image' });
-      }
-    });
-    stream.pipe(res);
-  } catch (error) {
-    console.error('Error proxying image:', error.message);
-    res.status(404).json({ error: 'Image not found' });
-  }
-});
-
-// ─────────────────────────────────────────────────────────────────────
-// Embed widget JS (returns a script that embeds the viewer)
-// ─────────────────────────────────────────────────────────────────────
-router.get('/embed.js', (req, res) => {
-  res.setHeader('Content-Type', 'application/javascript');
-  const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
-  
-  res.send(`
-(function() {
-  const containers = document.querySelectorAll('div[data-vs360-vehicle]');
-  containers.forEach(container => {
-    const vehicleId = container.getAttribute('data-vs360-vehicle');
-    if (!vehicleId) return;
-    
-    const iframe = document.createElement('iframe');
-    iframe.src = '${baseUrl}/viewer/' + vehicleId;
-    iframe.width = '100%';
-    iframe.style.aspectRatio = '16/9';
-    iframe.style.border = 'none';
-    iframe.style.borderRadius = '14px';
-    iframe.allowFullscreen = true;
-    
-    container.appendChild(iframe);
-  });
-})();
-  `);
-});
+</html>`;
+}
 
 module.exports = router;
+module.exports.renderViewer = renderViewer;

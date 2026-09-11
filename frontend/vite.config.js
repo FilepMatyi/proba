@@ -12,10 +12,10 @@ export default defineConfig({
         name: 'VehicleShoot 360',
         short_name: 'Vehicle360',
         description: '360° vehicle photography for car dealers',
-        theme_color: '#000000',
-        background_color: '#ffffff',
+        theme_color: '#080a0b',
+        background_color: '#080a0b',
         display: 'standalone',
-        orientation: 'portrait',
+        orientation: 'any',
         icons: [
           {
             src: '/icons/icon-192.png',
@@ -36,9 +36,10 @@ export default defineConfig({
     port: 5173,
     allowedHosts: ['.ngrok-free.dev'], 
     proxy: {
-      '/api': 'http://localhost:3000',
-      '/internal': 'http://localhost:3000',
-      '/viewer': 'http://localhost:3000',
+      '/api': process.env.VITE_PROXY_TARGET || 'http://localhost:3000',
+      '/internal': process.env.VITE_PROXY_TARGET || 'http://localhost:3000',
+      '/viewer': process.env.VITE_PROXY_TARGET || 'http://localhost:3000',
+      '/embed.js': process.env.VITE_PROXY_TARGET || 'http://localhost:3000',
     }
   }
 });

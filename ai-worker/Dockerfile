@@ -10,8 +10,15 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
 
+# Install PyTorch CPU first to avoid nvidia-cublas conflict
+RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu
+
+# Install basicsr with dependencies properly resolved now that torch is present
+RUN pip install --no-cache-dir basicsr realesrgan
+
+# Install remaining requirements
+RUN pip install --no-cache-dir -r requirements.txt
 # Pre-bake u2net model at build time to avoid runtime network dependency
 RUN python -c "from rembg import new_session; new_session('birefnet-general')"
 

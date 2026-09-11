@@ -1,334 +1,504 @@
-import redis
+import io
 import json
+import os
 import time
+import uuid
+
+import redis
 import requests
 from minio import Minio
-from minio.error import S3Error
-import io
-import os
-import uuid
-from config import (
-    MINIO_ENDPOINT, MINIO_PORT, MINIO_ACCESS_KEY, MINIO_SECRET_KEY,
-    MINIO_USE_SSL, REDIS_URL, WEBHOOK_URL, RAW_BUCKET, PROCESSED_BUCKET
-)
-from processing.background_removal import remove_background
-from processing.studio_compose import create_studio_image
-from processing.frame_selector import select_optimal_frames, calculate_sharpness
 from PIL import Image
 
-# Initialize MinIO client
+from config import (
+    BACKEND_URL,
+    INTERNAL_API_TOKEN,
+    MINIO_ACCESS_KEY,
+    MINIO_ENDPOINT,
+    MINIO_PORT,
+    MINIO_SECRET_KEY,
+    MINIO_USE_SSL,
+    PROCESSED_BUCKET,
+    RAW_BUCKET,
+    REDIS_URL,
+    TARGET_FRAMES,
+)
+from processing.background_removal import remove_background
+from processing.frame_selector import analyze_image_quality, select_optimal_frames
+from processing.studio_compose import create_studio_image
+
+
+STREAM_NAME = 'photo-processing-stream'
+CONSUMER_GROUP = 'photo-processing-group'
+CONSUMER_NAME = f'worker-{uuid.uuid4()}'
+DEAD_LETTER_STREAM = 'photo-processing-dead-letter'
+MAX_ATTEMPTS = 3
+STALE_AFTER_MS = 30 * 60 * 1000
+STATE_TTL_SECONDS = 24 * 60 * 60
+
 minio_client = Minio(
-    f"{MINIO_ENDPOINT}:{MINIO_PORT}",
+    f'{MINIO_ENDPOINT}:{MINIO_PORT}',
     access_key=MINIO_ACCESS_KEY,
     secret_key=MINIO_SECRET_KEY,
-    secure=MINIO_USE_SSL
+    secure=MINIO_USE_SSL,
 )
-
-# Initialize Redis client
 redis_client = redis.from_url(REDIS_URL, decode_responses=True)
 
-# Redis Streams configuration
-STREAM_NAME = "photo-processing-stream"
-CONSUMER_GROUP = "photo-processing-group"
-CONSUMER_NAME = f"worker-{uuid.uuid4()}"
+
+def _download_bytes(bucket, object_key):
+    response = minio_client.get_object(bucket, object_key)
+    try:
+        return response.read()
+    finally:
+        response.close()
+        response.release_conn()
+
+
+def _expire_state_keys(vehicle_id):
+    for suffix in ('heights', 'mask_quality', 'bg_done', 'studio_queued', 'studio_done'):
+        redis_client.expire(f'vehicle:{vehicle_id}:{suffix}', STATE_TTL_SECONDS)
+
+
+def _rounded_metrics(metrics):
+    return {
+        key: round(float(value), 4)
+        for key, value in metrics.items()
+    }
+
+
+def _selection_report(selected_details, sensor_assisted, frame_count):
+    scores = [item['quality']['score'] for item in selected_details]
+    brightness = [item['quality']['brightness'] for item in selected_details]
+    clipping = [
+        item['quality']['black_clip_ratio'] + item['quality']['white_clip_ratio']
+        for item in selected_details
+    ]
+    selected_indexes = [item['candidateIndex'] for item in selected_details]
+    ideal_gap = frame_count / max(len(selected_details), 1)
+    gaps = [right - left for left, right in zip(selected_indexes, selected_indexes[1:])]
+    cadence_deviation = (
+        sum(abs(gap - ideal_gap) for gap in gaps) / max(len(gaps) * ideal_gap, 1)
+    )
+
+    score = round(max(0, min(100, sum(scores) / len(scores) - min(cadence_deviation * 10, 12))))
+    warnings = []
+    weak_frames = sum(value < 55 for value in scores)
+    if weak_frames >= 4:
+        warnings.append(f'{weak_frames} kiválasztott nézet fényessége vagy élessége gyengébb az ideálisnál.')
+    if sum(brightness) / len(brightness) < 76:
+        warnings.append('A felvétel összességében sötét; egyenletesebb megvilágítás ajánlott.')
+    elif sum(brightness) / len(brightness) > 190:
+        warnings.append('A felvétel összességében túl világos; kerüld a közvetlen ellenfényt.')
+    if sum(clipping) / len(clipping) > 0.12:
+        warnings.append('Több nézetben elveszhetnek részletek a mély árnyékokban vagy csúcsfényekben.')
+    if cadence_deviation > 0.38:
+        warnings.append('A körbejárás sebessége egyenetlen volt; lassabb, egyenletes tempó javítja a forgást.')
+    return score, warnings, {
+        'selection': {
+            'sensorAssisted': sensor_assisted,
+            'candidateFrames': frame_count,
+            'selectedFrames': len(selected_details),
+            'averageFrameScore': round(sum(scores) / len(scores), 2),
+            'minimumFrameScore': round(min(scores), 2),
+            'cadenceDeviation': round(cadence_deviation, 4),
+        }
+    }
 
 
 def handle_select_frames(fields):
-    """
-    STAGE 1: Given 108 candidate frames, use sensor data to pick the best 36 based on angles and sharpness.
-    """
     vehicle_id = fields['vehicleId']
     frame_count = int(fields['frameCount'])
-    has_sensor_data = fields['hasSensorData'] == 'true'
-    
-    print(f"[{vehicle_id}] STAGE 1: Selecting best 36 frames out of {frame_count} candidates")
-    
+    target_frames = min(int(fields.get('targetFrames', TARGET_FRAMES)), frame_count)
+    has_sensor_data = fields.get('hasSensorData', 'false').lower() == 'true'
+
+    if target_frames < TARGET_FRAMES:
+        raise ValueError(f'Only {frame_count} candidates are available for {TARGET_FRAMES} output frames')
+
     sensor_data = None
     if has_sensor_data:
         try:
-            response = minio_client.get_object(RAW_BUCKET, f"{vehicle_id}/candidates/sensorData.json")
-            sensor_data = json.loads(response.read())
-            response.close()
-            response.release_conn()
-        except Exception as e:
-            print(f"Error loading sensor data: {e}")
-            
-    # List candidate objects
-    candidates = []
-    for i in range(frame_count):
-        candidates.append(f"{vehicle_id}/candidates/frame-{(i+1):03d}.jpg")
-        
-    num_target_frames = 36
-    
-    if not sensor_data:
-        print("No sensor data, falling back to evenly spaced selection")
-        step = len(candidates) / num_target_frames
-        selected_indices = [int(i * step) for i in range(num_target_frames)]
-        
-        for i, idx in enumerate(selected_indices):
-            photo_index = i + 1
-            redis_client.xadd(STREAM_NAME, {
-                'type': 'process-bg-removal',
-                'vehicleId': vehicle_id,
-                'photoIndex': photo_index,
-                'candidateKey': candidates[idx]
-            })
-        print(f"Queued {num_target_frames} bg-removal tasks")
-        return
+            sensor_data = json.loads(
+                _download_bytes(RAW_BUCKET, f'{vehicle_id}/candidates/sensorData.json')
+            )
+        except Exception as error:
+            print(f'[{vehicle_id}] Sensor data unavailable, using temporal selection: {error}')
 
-    # Use frame selector
-    candidate_groups, median_beta, median_gamma = select_optimal_frames(sensor_data, candidates, num_target_frames)
-    
-    for i, group in enumerate(candidate_groups):
-        photo_index = i + 1
-        best_idx = None
-        best_score = -float('inf')
-        
-        # Download and evaluate the 3 closest candidates for this angle
-        for candidate_info in group:
-            idx = candidate_info['index']
-            object_key = candidates[idx]
-            
+    candidate_keys = [
+        f'{vehicle_id}/candidates/frame-{index:03d}.jpg'
+        for index in range(1, frame_count + 1)
+    ]
+    candidate_groups, median_beta, median_gamma = select_optimal_frames(
+        sensor_data, candidate_keys, target_frames
+    )
+
+    selected = set()
+    selected_details = []
+    quality_cache = {}
+    last_selected = -1
+    for output_offset, group in enumerate(candidate_groups):
+        expected_index = (output_offset + 0.5) * frame_count / target_frames - 0.5
+        ranked_candidates = {item['index']: {**item, 'rank': rank} for rank, item in enumerate(group)}
+        for index in sorted(range(frame_count), key=lambda item: abs(item - expected_index))[:7]:
+            ranked_candidates.setdefault(index, {
+                'index': index,
+                'beta': median_beta,
+                'gamma': median_gamma,
+                'rank': 7,
+            })
+
+        remaining_after = target_frames - output_offset - 1
+        max_allowed = frame_count - remaining_after - 1
+        available = [
+            item for item in ranked_candidates.values()
+            if last_selected < item['index'] <= max_allowed and item['index'] not in selected
+        ]
+        if not available:
+            available = [{
+                'index': index,
+                'beta': median_beta,
+                'gamma': median_gamma,
+                'rank': 8,
+            } for index in range(last_selected + 1, max_allowed + 1)]
+
+        best_index = None
+        best_score = float('-inf')
+        best_quality = None
+        for candidate in available:
+            candidate_index = candidate['index']
             try:
-                response = minio_client.get_object(RAW_BUCKET, object_key)
-                img_bytes = response.read()
-                response.close()
-                response.release_conn()
-                
-                sharpness = calculate_sharpness(img_bytes)
-                
-                # Score combines sharpness and levelness (penalty for deviating from median beta/gamma)
-                tilt_penalty = abs(candidate_info['beta'] - median_beta) + abs(candidate_info['gamma'] - median_gamma)
-                
-                # Weights: we want sharp images, but avoid heavily tilted ones.
-                # Sharpness usually ranges from 100 to 1000+. Tilt is in degrees.
-                score = sharpness - (tilt_penalty * 20)
-                
+                if candidate_index not in quality_cache:
+                    image_bytes = _download_bytes(RAW_BUCKET, candidate_keys[candidate_index])
+                    quality_cache[candidate_index] = analyze_image_quality(image_bytes)
+                quality = quality_cache[candidate_index]
+                tilt = abs(candidate.get('beta', median_beta) - median_beta)
+                roll = abs(candidate.get('gamma', median_gamma) - median_gamma)
+                cadence_weight = 0.18 if candidate['rank'] < 7 else 0.7
+                cadence_penalty = min(abs(candidate_index - expected_index) * cadence_weight, 18)
+                score = quality['score'] - (tilt + roll) * 0.35 - cadence_penalty - candidate['rank'] * 0.65
                 if score > best_score:
                     best_score = score
-                    best_idx = idx
-            except Exception as e:
-                print(f"Error evaluating candidate {idx}: {e}")
-                if best_idx is None: best_idx = idx
-        
-        # Queue background removal for the winner
+                    best_index = candidate_index
+                    best_quality = quality
+            except Exception as error:
+                print(f'[{vehicle_id}] Candidate {candidate_index + 1} could not be scored: {error}')
+
+        if best_index is None:
+            raise RuntimeError(f'No readable candidate for output frame {output_offset + 1}')
+
+        selected.add(best_index)
+        last_selected = best_index
+        selected_details.append({
+            'outputIndex': output_offset + 1,
+            'candidateIndex': best_index,
+            'quality': _rounded_metrics(best_quality),
+        })
+
+    sensor_assisted = bool(
+        sensor_data
+        and any(abs(item.get('unwrapped_alpha', 0.0)) > 0.0 for group in candidate_groups for item in group)
+    )
+    quality_score, warnings, metrics = _selection_report(
+        selected_details, sensor_assisted, frame_count
+    )
+    notify_backend_quality(vehicle_id, quality_score, warnings, metrics)
+
+    for output_offset, selected_detail in enumerate(selected_details):
+        best_index = selected_detail['candidateIndex']
         redis_client.xadd(STREAM_NAME, {
             'type': 'process-bg-removal',
             'vehicleId': vehicle_id,
-            'photoIndex': photo_index,
-            'candidateKey': candidates[best_idx]
+            'photoIndex': str(output_offset + 1),
+            'candidateKey': candidate_keys[best_index],
         })
-        
-    print(f"[{vehicle_id}] Queued {num_target_frames} bg-removal tasks based on sharpness/angles")
+
+    print(f'[{vehicle_id}] Selected and queued {len(selected)} unique frames')
 
 
 def handle_bg_removal(fields):
-    """
-    STAGE 2: Remove background and store bounding box size in Redis.
-    """
     vehicle_id = fields['vehicleId']
     photo_index = int(fields['photoIndex'])
-    candidate_key = fields['candidateKey']
-    
-    print(f"[{vehicle_id}] STAGE 2: Removing bg for frame {photo_index}")
-    
-    # Download raw image
-    response = minio_client.get_object(RAW_BUCKET, candidate_key)
-    image_bytes = response.read()
-    response.close()
-    response.release_conn()
-    
-    # Remove background
+    image_bytes = _download_bytes(RAW_BUCKET, fields['candidateKey'])
+
+    if os.getenv('ENABLE_UPSCALE', 'false').lower() == 'true':
+        try:
+            from processing.upscaler import upscale_image
+            image_bytes = upscale_image(image_bytes)
+        except Exception as error:
+            print(f'[{vehicle_id}] Upscale skipped for frame {photo_index}: {error}')
+
     vehicle_image = remove_background(image_bytes, photo_index=photo_index)
-    
-    # Get bounding box height
-    bbox = vehicle_image.getbbox()
-    vh = bbox[3] - bbox[1] if bbox else vehicle_image.height
-    
-    # Store the height in Redis
-    redis_client.hset(f"vehicle:{vehicle_id}:heights", str(photo_index), str(vh))
-    
-    # Save the transparent image to MinIO
-    img_byte_arr = io.BytesIO()
-    vehicle_image.save(img_byte_arr, format='PNG', optimize=True)
-    img_byte_arr.seek(0)
-    
-    transparent_key = f"{vehicle_id}/transparent-{photo_index}.png"
+    bounding_box = vehicle_image.getbbox()
+    vehicle_height = bounding_box[3] - bounding_box[1] if bounding_box else vehicle_image.height
+    if bounding_box:
+        bbox_width = (bounding_box[2] - bounding_box[0]) / max(vehicle_image.width, 1)
+        bbox_height = vehicle_height / max(vehicle_image.height, 1)
+        touches_edge = (
+            bounding_box[0] <= 2 or bounding_box[1] <= 2
+            or bounding_box[2] >= vehicle_image.width - 2
+            or bounding_box[3] >= vehicle_image.height - 2
+        )
+    else:
+        bbox_width, bbox_height, touches_edge = 0.0, 0.0, False
+    alpha_histogram = vehicle_image.getchannel('A').histogram()
+    alpha_coverage = sum(alpha_histogram[16:]) / max(vehicle_image.width * vehicle_image.height, 1)
+
+    transparent_buffer = io.BytesIO()
+    vehicle_image.save(transparent_buffer, format='PNG', optimize=True)
+    transparent_buffer.seek(0)
+    transparent_key = f'{vehicle_id}/transparent-{photo_index}.png'
     minio_client.put_object(
         RAW_BUCKET,
         transparent_key,
-        img_byte_arr,
-        length=img_byte_arr.getbuffer().nbytes,
-        content_type='image/png'
+        transparent_buffer,
+        length=transparent_buffer.getbuffer().nbytes,
+        content_type='image/png',
     )
-    
-    # Check if all 36 frames are done (idempotent via SADD)
-    redis_client.sadd(f"vehicle:{vehicle_id}:bg_done", str(photo_index))
-    done_count = redis_client.scard(f"vehicle:{vehicle_id}:bg_done")
-    if done_count >= 36:
-        print(f"[{vehicle_id}] All 36 backgrounds removed. Running exposure normalization...")
-        
-        # Download all 36 transparent images for batch exposure normalization
-        try:
-            from processing.exposure_normalize import normalize_exposure
-            images_dict = {}
-            for i in range(1, 37):
-                key = f"{vehicle_id}/transparent-{i}.png"
-                resp = minio_client.get_object(RAW_BUCKET, key)
-                images_dict[i] = Image.open(io.BytesIO(resp.read()))
-                resp.close()
-                resp.release_conn()
-            
-            # Normalize exposure across all 36 frames
-            normalized = normalize_exposure(images_dict)
-            
-            # Re-upload normalized transparent images
-            for i, img in normalized.items():
-                buf = io.BytesIO()
-                img.save(buf, format='PNG', optimize=True)
-                buf.seek(0)
-                key = f"{vehicle_id}/transparent-{i}.png"
-                minio_client.put_object(RAW_BUCKET, key, buf, length=buf.getbuffer().nbytes, content_type='image/png')
-            
-            print(f"[{vehicle_id}] Exposure normalization complete. Queuing Stage 3.")
-        except Exception as e:
-            print(f"[{vehicle_id}] Exposure normalization failed (continuing anyway): {e}")
-        
-        # Queue Stage 3 for all frames
-        for i in range(1, 37):
+
+    redis_client.hset(f'vehicle:{vehicle_id}:heights', str(photo_index), str(vehicle_height))
+    redis_client.hset(f'vehicle:{vehicle_id}:mask_quality', str(photo_index), json.dumps({
+        'bboxWidthRatio': round(bbox_width, 4),
+        'bboxHeightRatio': round(bbox_height, 4),
+        'alphaCoverage': round(alpha_coverage, 4),
+        'touchesEdge': touches_edge,
+    }))
+    redis_client.sadd(f'vehicle:{vehicle_id}:bg_done', str(photo_index))
+    _expire_state_keys(vehicle_id)
+
+    done_count = redis_client.scard(f'vehicle:{vehicle_id}:bg_done')
+    queue_lock = f'vehicle:{vehicle_id}:studio_queued'
+    if done_count >= TARGET_FRAMES and redis_client.set(queue_lock, '1', nx=True, ex=STATE_TTL_SECONDS):
+        summarize_mask_quality(vehicle_id)
+        normalize_transparent_frames(vehicle_id)
+        for index in range(1, TARGET_FRAMES + 1):
             redis_client.xadd(STREAM_NAME, {
                 'type': 'process-studio',
                 'vehicleId': vehicle_id,
-                'photoIndex': i,
-                'transparentKey': f"{vehicle_id}/transparent-{i}.png"
+                'photoIndex': str(index),
+                'transparentKey': f'{vehicle_id}/transparent-{index}.png',
             })
+        print(f'[{vehicle_id}] Queued {TARGET_FRAMES} studio compositions')
+
+
+def summarize_mask_quality(vehicle_id):
+    raw_metrics = redis_client.hgetall(f'vehicle:{vehicle_id}:mask_quality')
+    metrics = []
+    for value in raw_metrics.values():
+        try:
+            metrics.append(json.loads(value))
+        except (TypeError, ValueError):
+            continue
+    if not metrics:
+        return
+
+    edge_frames = sum(bool(item.get('touchesEdge')) for item in metrics)
+    small_frames = sum(item.get('bboxWidthRatio', 0) < 0.32 for item in metrics)
+    warnings = []
+    if edge_frames:
+        warnings.append(f'{edge_frames} nézetben a jármű közel került a képszélhez; ellenőrzés ajánlott.')
+    if small_frames >= 4:
+        warnings.append('A jármű több nézetben túl kicsi a képen; a következő felvételnél menj közelebb.')
+
+    notify_backend_quality(vehicle_id, None, warnings, {
+        'segmentation': {
+            'edgeTouchingFrames': edge_frames,
+            'smallVehicleFrames': small_frames,
+            'averageAlphaCoverage': round(
+                sum(item.get('alphaCoverage', 0) for item in metrics) / len(metrics), 4
+            ),
+        }
+    })
+
+
+def normalize_transparent_frames(vehicle_id):
+    try:
+        from processing.exposure_normalize import normalize_exposure
+
+        images = {}
+        for index in range(1, TARGET_FRAMES + 1):
+            image_bytes = _download_bytes(RAW_BUCKET, f'{vehicle_id}/transparent-{index}.png')
+            with Image.open(io.BytesIO(image_bytes)) as image:
+                images[index] = image.convert('RGBA').copy()
+
+        for index, image in normalize_exposure(images).items():
+            output = io.BytesIO()
+            image.save(output, format='PNG', optimize=True)
+            output.seek(0)
+            minio_client.put_object(
+                RAW_BUCKET,
+                f'{vehicle_id}/transparent-{index}.png',
+                output,
+                length=output.getbuffer().nbytes,
+                content_type='image/png',
+            )
+    except Exception as error:
+        print(f'[{vehicle_id}] Exposure normalization skipped: {error}')
 
 
 def handle_studio(fields):
-    """
-    STAGE 3: Compose studio using a GLOBAL max height to prevent breathing.
-    """
     vehicle_id = fields['vehicleId']
     photo_index = int(fields['photoIndex'])
-    transparent_key = fields['transparentKey']
-    
-    print(f"[{vehicle_id}] STAGE 3: Studio compose for frame {photo_index}")
-    
-    # Get global max height
-    heights_dict = redis_client.hgetall(f"vehicle:{vehicle_id}:heights")
-    if not heights_dict:
-        print(f"Warning: No heights found for {vehicle_id}, using fallback.")
-        global_max_h = 1000
-    else:
-        global_max_h = max([int(v) for v in heights_dict.values()])
-        
-    # Download transparent image
-    response = minio_client.get_object(RAW_BUCKET, transparent_key)
-    vehicle_image = Image.open(io.BytesIO(response.read()))
-    
-    # Create studio composition
-    studio_image = create_studio_image(vehicle_image, global_max_h=global_max_h)
-    
-    # Convert to bytes
-    img_byte_arr = io.BytesIO()
-    studio_image.save(img_byte_arr, format='JPEG', quality=97, subsampling=0, optimize=True)
-    img_byte_arr.seek(0)
-    
-    # Upload processed image to MinIO
-    processed_key = f"{vehicle_id}/processed-{photo_index}.jpg"
+    heights = redis_client.hgetall(f'vehicle:{vehicle_id}:heights')
+    ordered_heights = sorted(int(value) for value in heights.values())
+    reference_index = round((len(ordered_heights) - 1) * 0.9) if ordered_heights else 0
+    reference_height = ordered_heights[reference_index] if ordered_heights else 1000
+
+    image_bytes = _download_bytes(RAW_BUCKET, fields['transparentKey'])
+    with Image.open(io.BytesIO(image_bytes)) as image:
+        vehicle_image = image.convert('RGBA').copy()
+
+    studio_image = create_studio_image(vehicle_image, global_max_h=reference_height)
+    output = io.BytesIO()
+    studio_image.save(output, format='JPEG', quality=94, subsampling=0, optimize=True)
+    output.seek(0)
     minio_client.put_object(
         PROCESSED_BUCKET,
-        processed_key,
-        img_byte_arr,
-        length=img_byte_arr.getbuffer().nbytes,
-        content_type='image/jpeg'
+        f'{vehicle_id}/processed-{photo_index}.jpg',
+        output,
+        length=output.getbuffer().nbytes,
+        content_type='image/jpeg',
     )
-    
-    # Notify backend about processed frame
+
+    preview_image = studio_image.resize((1280, 720), Image.Resampling.LANCZOS)
+    preview_output = io.BytesIO()
+    preview_image.save(preview_output, format='JPEG', quality=86, optimize=True, progressive=True)
+    preview_output.seek(0)
+    minio_client.put_object(
+        PROCESSED_BUCKET,
+        f'{vehicle_id}/preview-{photo_index}.jpg',
+        preview_output,
+        length=preview_output.getbuffer().nbytes,
+        content_type='image/jpeg',
+    )
+
     notify_backend_frame_processed(vehicle_id, photo_index)
+    redis_client.sadd(f'vehicle:{vehicle_id}:studio_done', str(photo_index))
+    _expire_state_keys(vehicle_id)
 
 
 def notify_backend_frame_processed(vehicle_id, photo_index):
+    response = requests.patch(
+        f'{BACKEND_URL}/internal/vehicles/{vehicle_id}/frame-processed',
+        json={'photoIndex': photo_index},
+        headers={'x-internal-token': INTERNAL_API_TOKEN},
+        timeout=15,
+    )
+    response.raise_for_status()
+
+
+def notify_backend_quality(vehicle_id, quality_score, warnings, metrics):
     try:
-        backend_url = os.getenv('BACKEND_URL', 'http://localhost:3000')
-        requests.patch(
-            f"{backend_url}/internal/vehicles/{vehicle_id}/frame-processed",
-            json={'photoIndex': photo_index},
-            timeout=10
+        payload = {'warnings': warnings, 'metrics': metrics}
+        if quality_score is not None:
+            payload['qualityScore'] = quality_score
+        response = requests.post(
+            f'{BACKEND_URL}/internal/vehicles/{vehicle_id}/quality',
+            json=payload,
+            headers={'x-internal-token': INTERNAL_API_TOKEN},
+            timeout=15,
         )
-    except Exception as e:
-        print(f"Error notifying backend about frame {photo_index}: {e}")
+        response.raise_for_status()
+    except Exception as error:
+        print(f'[{vehicle_id}] Could not report quality metrics: {error}')
+
+
+def notify_backend_failed(vehicle_id):
+    try:
+        response = requests.post(
+            f'{BACKEND_URL}/internal/vehicles/{vehicle_id}/failed',
+            json={'error': 'A képfeldolgozó három próbálkozás után sem tudta befejezni a feladatot.'},
+            headers={'x-internal-token': INTERNAL_API_TOKEN},
+            timeout=15,
+        )
+        response.raise_for_status()
+    except Exception as notify_error:
+        print(f'[{vehicle_id}] Could not report terminal failure: {notify_error}')
 
 
 def initialize_consumer_group():
     try:
         redis_client.xgroup_create(STREAM_NAME, CONSUMER_GROUP, '0', mkstream=True)
-        print(f"Created consumer group: {CONSUMER_GROUP}")
-    except redis.ResponseError as e:
-        if 'BUSYGROUP' in str(e):
-            print(f"Consumer group {CONSUMER_GROUP} already exists")
-        else:
+    except redis.ResponseError as error:
+        if 'BUSYGROUP' not in str(error):
             raise
 
 
-def claim_stale_messages():
-    """Claim messages that have been pending for more than 60 seconds (crashed workers)."""
+def process_message(message_id, fields):
+    job_type = fields.get('type')
+    handlers = {
+        'select-frames': handle_select_frames,
+        'process-bg-removal': handle_bg_removal,
+        'process-studio': handle_studio,
+    }
+
+    handler = handlers.get(job_type)
+    if handler is None:
+        print(f'Ignoring unsupported job type: {job_type}')
+        redis_client.xack(STREAM_NAME, CONSUMER_GROUP, message_id)
+        return
+
     try:
-        pending = redis_client.xpending_range(STREAM_NAME, CONSUMER_GROUP, '-', '+', 50)
-        now = int(time.time() * 1000)
-        for entry in pending:
-            idle_ms = entry.get('time_since_delivered', 0)
-            if idle_ms > 60000:  # Stuck for >60 seconds
-                msg_id = entry['message_id']
-                claimed = redis_client.xclaim(
-                    STREAM_NAME, CONSUMER_GROUP, CONSUMER_NAME,
-                    min_idle_time=60000, message_ids=[msg_id]
-                )
-                if claimed:
-                    print(f"Claimed stale message: {msg_id}")
-    except Exception as e:
-        print(f"Error claiming stale messages: {e}")
+        handler(fields)
+        redis_client.xack(STREAM_NAME, CONSUMER_GROUP, message_id)
+        redis_client.hdel('photo-processing-attempts', message_id)
+    except Exception as error:
+        attempts = redis_client.hincrby('photo-processing-attempts', message_id, 1)
+        print(f"Job {message_id} ({job_type}) failed, attempt {attempts}: {error}")
+        if attempts >= MAX_ATTEMPTS:
+            redis_client.xadd(DEAD_LETTER_STREAM, {
+                **fields,
+                'originalMessageId': message_id,
+                'error': str(error)[:500],
+            })
+            notify_backend_failed(fields.get('vehicleId', ''))
+            redis_client.xack(STREAM_NAME, CONSUMER_GROUP, message_id)
+            redis_client.hdel('photo-processing-attempts', message_id)
+
+
+def claim_stale_messages():
+    try:
+        result = redis_client.xautoclaim(
+            STREAM_NAME,
+            CONSUMER_GROUP,
+            CONSUMER_NAME,
+            min_idle_time=STALE_AFTER_MS,
+            start_id='0-0',
+            count=5,
+        )
+        return result[1] if result and len(result) > 1 else []
+    except redis.RedisError as error:
+        print(f'Could not claim stale messages: {error}')
+        return []
 
 
 def worker_loop():
-    print(f"Starting AI worker as consumer: {CONSUMER_NAME}")
+    print(f'Starting 36-frame worker: {CONSUMER_NAME}')
     initialize_consumer_group()
-    
+    last_claim = 0
+
     while True:
-        claim_stale_messages()
         try:
-            messages = redis_client.xreadgroup(
-                CONSUMER_GROUP, CONSUMER_NAME, {STREAM_NAME: '>'}, count=1, block=5000
+            now = time.time()
+            if now - last_claim > 60:
+                for message_id, fields in claim_stale_messages():
+                    process_message(message_id, fields)
+                last_claim = now
+
+            streams = redis_client.xreadgroup(
+                CONSUMER_GROUP,
+                CONSUMER_NAME,
+                {STREAM_NAME: '>'},
+                count=1,
+                block=5000,
             )
-            
-            if messages:
-                for stream, stream_messages in messages:
-                    for message_id, fields in stream_messages:
-                        job_type = fields.get('type', 'process-photo') # Fallback to old name
-                        print(f"Received job '{job_type}': {message_id}")
-                        
-                        try:
-                            if job_type == 'select-frames':
-                                handle_select_frames(fields)
-                            elif job_type == 'process-bg-removal':
-                                handle_bg_removal(fields)
-                            elif job_type == 'process-studio':
-                                handle_studio(fields)
-                            elif job_type == 'process-photo':
-                                # Legacy fallback
-                                print("Warning: Received legacy 'process-photo' task, ignoring or mapping to new pipeline")
-                                
-                            redis_client.xack(STREAM_NAME, CONSUMER_GROUP, message_id)
-                        except Exception as e:
-                            print(f"Job failed for message {message_id}: {e}")
-                            time.sleep(1)
-                            
-        except redis.RedisError as e:
-            print(f"Redis error: {e}")
+            for _, messages in streams:
+                for message_id, fields in messages:
+                    process_message(message_id, fields)
+        except redis.RedisError as error:
+            print(f'Redis error: {error}')
             time.sleep(5)
-        except Exception as e:
-            print(f"Worker error: {e}")
+        except Exception as error:
+            print(f'Worker loop error: {error}')
             time.sleep(5)
 
-if __name__ == "__main__":
+
+if __name__ == '__main__':
     worker_loop()

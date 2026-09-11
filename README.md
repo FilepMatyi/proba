@@ -1,340 +1,154 @@
 # VehicleShoot 360
 
-B2B SaaS platform for car dealers to create premium, 360° studio-quality 3D vehicle presentations using only a phone browser - no native app required.
+Mobilos videóból automatikusan előállított, 36 nézetes prémium autóbemutató kereskedések számára.
 
-## Features
+## Termékfolyamat
 
-- **Progressive Web App (PWA)**: Install on phone home screen, native-like experience
-- **Camera Integration**: Capture 24 photos with live camera feed
-- **Gyroscope Level**: Digital waterpass ensures level photos (shutter disabled when not level)
-- **Real-time Upload**: Photos upload sequentially in background as they're taken
-- **AI Processing**: Automatic background removal and studio composition with realistic shadows
-- **Interactive 360° Viewer**: Embeddable iframe for dealer websites
-- **Scalable Architecture**: Stateless AI workers, horizontal scaling ready
+1. A munkatárs megadja az autó készletazonosítóját.
+2. Egy 30–40 másodperces videót készít, miközben körbejárja az autót.
+3. A backend 108 jelölt képkockát nyer ki a videóból.
+4. A worker a tájolás, élesség, expozíció, kontraszt és kiégett részletek alapján sorrendtartóan kiválaszt 36 egyedi nézetet.
+5. A képeken háttéreltávolítás, visszafogott expozíció-egységesítés és stabil méretezésű stúdiókompozíció fut.
+6. Minden nézethez 1280 px-es gyorsnézet és 2400 px-es HD kép készül.
+7. A dashboard élőben jelzi az állapotot és a minőségi pontszámot, majd megosztható és beágyazható 360° viewer készül.
 
-## Architecture
+## Architektúra
 
-```
-[Phone Browser - React PWA]
-        | (sequential upload with retry)
-        v
-[Node.js/Express API] → MinIO (raw photos) → Prisma (SQLite)
-        |
-        v
-[Redis Streams] (consumer groups with XACK)
-        |
-        v
-[Python AI Workers] → rembg (background removal) → Pillow (studio composition)
-        |
-        v
-[MinIO (processed photos)]
-        |
-        v
-[Internal API] → Prisma update → Webhook → [360° Viewer]
-```
-
-**Architecture Decision: Redis Streams vs BullMQ**
-
-We chose Redis Streams over BullMQ for the message queue because:
-- Native Redis consumer group support with automatic message acknowledgment (XACK)
-- Better cross-language compatibility (Node.js ↔ Python)
-- Simpler implementation without external dependencies
-- Built-in message persistence and delivery guarantees
-- Easier to debug and monitor directly in Redis
-- Sufficient for MVP requirements without BullMQ's advanced features
-
-## Tech Stack
-
-| Layer | Technology |
-|-------|------------|
-| Frontend | React (Vite), PWA, getUserMedia, DeviceOrientationEvent |
-| Backend API | Node.js, Express, Multer, Prisma ORM |
-| Database | SQLite (dev) / PostgreSQL (prod) |
-| Object Storage | MinIO |
-| Message Queue | Redis Streams (consumer groups) |
-| AI Processing | Python, rembg (IS-Net), Pillow |
-| Output | Webhook + embeddable iframe viewer |
-
-## Project Structure
-
-```
-vehicleshoot-360/
-├── frontend/                    # React PWA
-│   ├── src/
-│   │   ├── components/
-│   │   │   ├── CameraView.jsx    # Camera stream, overlay, capture
-│   │   │   ├── Waterpass.jsx     # Gyroscope level indicator
-│   │   │   └── ProgressBar.jsx   # Upload progress
-│   │   ├── api/
-│   │   │   └── uploader.js       # Sequential upload queue with retry
-│   │   ├── App.jsx               # Main app state
-│   │   └── main.jsx
-│   ├── public/
-│   │   ├── manifest.json
-│   │   └── icons/
-│   ├── vite.config.js            # PWA configuration
-│   └── package.json
-├── backend/                      # Node.js API
-│   ├── prisma/
-│   │   ├── schema.prisma         # Database schema
-│   │   └── dev.db                # SQLite database (generated)
-│   ├── src/
-│   │   ├── lib/
-│   │   │   ├── minioClient.js    # MinIO connection
-│   │   │   ├── redisConnection.js
-│   │   │   └── prisma.js         # Prisma client
-│   │   ├── queues/
-│   │   │   └── photoQueue.js     # Redis Streams setup
-│   │   ├── routes/
-│   │   │   ├── photos.js         # Upload endpoint
-│   │   │   ├── viewer.js         # 360° viewer
-│   │   │   ├── webhook.js        # Webhook endpoint
-│   │   │   └── internal.js      # Internal API for workers
-│   │   ├── services/
-│   │   │   └── sessionService.js # Session management & webhooks
-│   │   ├── config.js
-│   │   └── index.js
-│   ├── Dockerfile
-│   └── package.json
-├── ai-worker/                    # Python AI processing
-│   ├── processing/
-│   │   ├── background_removal.py    # rembg integration
-│   │   └── studio_compose.py        # Shadow generation
-│   ├── worker.py                   # Redis Streams consumer
-│   ├── config.py
-│   ├── requirements.txt
-│   └── Dockerfile
-└── docker-compose.yml            # Local development setup
+```text
+React PWA
+   │ video + orientation samples
+   ▼
+Express API ── FFmpeg ── 108 candidates ── MinIO
+   │
+   ▼
+Redis Streams
+   │
+   ▼
+Python workers ── QA + select 36 ── remove background ── compose studio
+   │
+   ├── preview + HD JPEGs ── MinIO
+   └── progress + quality callback ── Express/Prisma
+                                │
+                                ▼
+                      dashboard + 360 viewer
 ```
 
-## Prerequisites
+A `3d-worker` könyvtár korábbi Gaussian Splat kísérleti kódot tartalmazhat, de nem része az aktív Compose stacknek és nem fogyasztja a produkciós queue-t.
 
-- Docker and Docker Compose
-- Node.js 18+ (for local development without Docker)
-- Python 3.11+ (for local development without Docker)
-- HTTPS tunnel (ngrok/Cloudflare Tunnel) for phone testing (camera requires secure context)
+## Technológiák
 
-## Quick Start with Docker
+- React 18, Vite és PWA
+- Node.js 18, Express, Prisma és SQLite
+- FFmpeg
+- Redis Streams
+- MinIO
+- Python 3.11, rembg, OpenCV és Pillow
 
-1. **Clone and navigate to project**
-   ```bash
-   cd vehicleshoot-360
-   ```
+## Indítás
 
-2. **Add PWA icons** (required for PWA to work)
-   ```bash
-   # Add icon-192.png and icon-512.png to frontend/public/icons/
-   # See frontend/public/icons/README.md for details
-   ```
-
-3. **Start all services**
-   ```bash
-   docker-compose up --build
-   ```
-
-4. **Access the application**
-   - Frontend: http://localhost:5173
-   - Backend API: http://localhost:3000
-   - MinIO Console: http://localhost:9001 (minioadmin/minioadmin)
-
-## Local Development (without Docker)
-
-### Backend Setup
+Előfeltétel: Docker és Docker Compose.
 
 ```bash
-cd backend
-npm install
-npx prisma generate
-npx prisma migrate dev --name init
-npm start
+docker compose up --build
 ```
 
-### AI Worker Setup
+Elérhetőségek:
 
-```bash
-cd ai-worker
-pip install -r requirements.txt
-python worker.py
-```
+- alkalmazás: `http://localhost:5173`
+- API és viewer: `http://localhost:3000`
+- MinIO Console: `http://localhost:9001`
 
-### Frontend Setup
+A kamera és a mozgásszenzorok telefonon HTTPS-kapcsolatot igényelnek. Helyi mobilteszthez használj HTTPS tunnelt, és állítsd be a `VITE_API_BASE_URL` értékét.
 
-```bash
-cd frontend
-npm install
-npm run dev
-```
+## Konfiguráció
 
-## Phone Testing (HTTPS Required)
+Fontosabb backend változók:
 
-Camera and gyroscope APIs require HTTPS. Use ngrok or Cloudflare Tunnel:
-
-```bash
-# Example with ngrok
-ngrok http 5173
-```
-
-Update `frontend/.env`:
-```
-VITE_API_BASE_URL=https://your-ngrok-url.ngrok-free.app/api
-```
-
-## API Endpoints
-
-### POST /api/vehicles/:vehicleId/photos
-
-Upload a photo for processing.
-
-**Request:**
-- Content-Type: multipart/form-data
-- Fields:
-  - `photo`: JPEG image (max 15MB)
-  - `photoIndex`: 1-24 (photo sequence number)
-
-**Response (202 Accepted):**
-```json
-{
-  "status": "accepted",
-  "objectKey": "vehicleId/1-uuid.jpg",
-  "uploadedCount": 1
-}
-```
-
-### GET /viewer/:vehicleId
-
-Interactive 360° viewer for processed photos.
-
-**Response:** HTML page with embeddable viewer
-
-### POST /api/webhook
-
-Webhook endpoint for processing completion notifications (debug/test endpoint).
-
-**Payload:**
-```json
-{
-  "vehicleId": "Lancer-16",
-  "status": "completed",
-  "processedFrames": 24,
-  "totalFrames": 24,
-  "viewerUrl": "http://localhost:3000/viewer/Lancer-16",
-  "iframeCode": "<iframe src=\"...) ...></iframe>"
-}
-```
-
-### PATCH /internal/vehicles/:vehicleId/frame-processed
-
-Internal endpoint called by AI workers to notify when a frame is processed.
-
-**Request:**
-```json
-{
-  "photoIndex": 5
-}
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "vehicleId": "Lancer-16",
-  "processedFrames": 5,
-  "totalFrames": 24,
-  "status": "in_progress"
-}
-```
-
-## User Flow
-
-1. Salesperson opens PWA on phone
-2. Enters vehicle ID (e.g., "Lancer-16")
-3. Camera view opens with silhouette overlay and level indicator
-4. Walks around vehicle, capturing 24 photos (shutter only active when level)
-5. Photos upload sequentially in background with retry logic
-6. Each upload creates a session in Prisma DB and enqueues job to Redis Streams
-7. AI workers consume jobs from Redis Streams, process photos, and notify backend via internal API
-8. Backend updates processed frame count in Prisma DB
-9. When all 24 frames complete, webhook is sent to dealership URL
-10. Result: embeddable iframe with interactive 360° viewer
-
-## Configuration
-
-### Backend (.env)
-```
+```env
 PORT=3000
 BASE_URL=http://localhost:3000
+DATABASE_URL=file:./dev.db
+REDIS_URL=redis://redis:6379
 MINIO_ENDPOINT=minio
 MINIO_PORT=9000
 MINIO_ACCESS_KEY=minioadmin
 MINIO_SECRET_KEY=minioadmin
-REDIS_URL=redis://redis:6379
-WEBHOOK_URL=http://localhost:3001/webhook
+INTERNAL_API_TOKEN=development-only-change-me
+CANDIDATE_FRAMES=108
+TARGET_FRAMES=36
+ALLOWED_ORIGIN=*
+WEBHOOK_URL=
 ```
 
-### Frontend (.env)
+Worker változók:
+
+```env
+BACKEND_URL=http://backend:3000
+INTERNAL_API_TOKEN=development-only-change-me
+TARGET_FRAMES=36
+ENABLE_UPSCALE=false
+ENABLE_ALPHA_MATTING=false
+ENABLE_GLASS_REPAIR=false
+ENABLE_GLASS_MASKING=false
+REMBG_MODEL=birefnet-general
 ```
-VITE_API_BASE_URL=http://localhost:3000/api
+
+Éles környezetben kötelező lecserélni a MinIO jelszót és az `INTERNAL_API_TOKEN` értékét, valamint konkrét originre szűkíteni az `ALLOWED_ORIGIN` beállítást.
+
+## Session állapotok
+
+- `uploading`: a videó fogadása
+- `extracting`: FFmpeg képkockakinyerés
+- `selecting`: a 36 optimális nézet kiválasztása
+- `composing`: háttéreltávolítás és stúdiókompozíció
+- `ready`: a viewer elkészült
+- `failed`: a feldolgozás három sikertelen worker-próbálkozás után leállt
+
+## API
+
+- `POST /api/vehicles/:vehicleId/video` – videó és opcionális szenzoradat feltöltése
+- `GET /api/sessions` – dashboard lista
+- `GET /api/sessions/:vehicleId` – egy projekt élő állapota
+- `DELETE /api/sessions/:vehicleId` – befejezett vagy sikertelen projekt törlése
+- `GET /viewer/:vehicleId` – interaktív 360° bemutató
+- `GET /embed.js` – beágyazó kliens
+- `PATCH /internal/vehicles/:vehicleId/frame-processed` – tokennel védett worker callback
+- `POST /internal/vehicles/:vehicleId/quality` – tokennel védett minőségellenőrzési callback
+
+## Viewer képességek
+
+- progresszív betöltés: kis gyorsnézetek, majd az aktuális és szomszédos képek HD frissítése
+- egér-, érintés- és billentyűzetvezérlés, tehetetlenségi forgás
+- kétujjas nagyítás, pásztázás, dupla kattintásos zoom és visszaállítás
+- nézetscrubber, automatikus forgatás, teljes képernyő és natív megosztás
+- automatikus frissítés, ha a viewer a feldolgozás befejezése előtt nyílik meg
+
+## Ellenőrzések
+
+```bash
+cd frontend
+npm run build
+
+cd ../backend
+npm test
+npm run check
+npx prisma validate
+
+cd ..
+python -m unittest discover -s ai-worker/tests -v
+docker compose config
 ```
 
-### AI Worker (config.py)
-```python
-MINIO_ENDPOINT = os.getenv('MINIO_ENDPOINT', 'localhost')
-MINIO_PORT = int(os.getenv('MINIO_PORT', '9000'))
-REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379')
-BACKEND_URL = os.getenv('BACKEND_URL', 'http://localhost:3000')
-WEBHOOK_URL = os.getenv('WEBHOOK_URL', 'http://localhost:3001/webhook')
+## Beágyazás
+
+```html
+<div data-vs360-vehicle="lancer-16"></div>
+<script src="https://sajat-domain.hu/embed.js"></script>
 ```
 
-## Production Considerations
+## Produkciós megjegyzések
 
-- Use proper SSL certificates (Let's Encrypt)
-- Configure production MinIO with proper storage
-- Scale AI workers based on load
-- Implement proper authentication
-- Add rate limiting
-- Set up monitoring and logging
-- Configure proper webhook retry logic
-- Use CDN for processed images
-- Migrate SQLite to PostgreSQL for production
-- Configure proper CORS for production domains
-
-## Testing with Mitsubishi Lancer 1.6
-
-First test case: Mitsubishi Lancer 1.6
-
-1. Enter vehicle ID: `Lancer-16`
-2. Capture 24 photos walking around the vehicle
-3. Wait for AI processing completion
-4. Access viewer at: `http://localhost:3000/viewer/Lancer-16`
-5. Embed iframe on dealer website
-
-## Troubleshooting
-
-**Camera not working:**
-- Ensure HTTPS (required for camera access)
-- Check browser permissions
-- Try different browser (Chrome recommended)
-
-**Gyroscope not working:**
-- iOS: Click "Enable Gyroscope" button (permission required)
-- Android: Should work automatically
-- Check device orientation permissions
-
-**Upload failures:**
-- Check backend logs
-- Verify MinIO connection
-- Check Redis connection
-- Review queue status
-
-**AI processing slow:**
-- Scale up worker containers in docker-compose.yml
-- Check system resources
-- Monitor queue backlog
-
-## License
-
-Proprietary - VehicleShoot 360
-
-## Support
-
-For issues and questions, contact the development team.
+- SQLite helyett több backend példánynál PostgreSQL használata ajánlott.
+- A publikus dashboard elé kereskedői autentikáció szükséges.
+- A webhook kézbesítéshez tartós outbox/retry mechanizmus ajánlott.
+- A queue backlogot, dead-letter streamet, feldolgozási időt és MinIO tárhelyet monitorozni kell.

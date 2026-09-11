@@ -9,6 +9,8 @@ import numpy as np
 MODEL_NAME = os.getenv('REMBG_MODEL', 'u2net')
 _session = new_session(MODEL_NAME)
 ENABLE_ALPHA_MATTING = os.getenv('ENABLE_ALPHA_MATTING', 'false').lower() == 'true'
+ENABLE_GLASS_REPAIR = os.getenv('ENABLE_GLASS_REPAIR', 'false').lower() == 'true'
+ENABLE_GLASS_MASKING = os.getenv('ENABLE_GLASS_MASKING', 'false').lower() == 'true'
 
 # Coverage thresholds — outside this range flags a frame for manual review
 COVERAGE_MIN = 0.10   # 10%
@@ -177,14 +179,17 @@ def remove_background(image_bytes, photo_index=0):
     # ── 2. Morphological mask cleanup ──
     image = _cleanup_mask(image, photo_index)
 
-    # ── 3. Window / glass tinting (Heuristics) ──
-    image = _darken_windows_and_holes(image)
+    # Glass repair changes visible vehicle details, so it is opt-in. The default
+    # production path preserves the source pixels for marketplace trust.
+    if ENABLE_GLASS_REPAIR:
+        image = _darken_windows_and_holes(image)
     
     # ── 4. AI-driven Glass Masking (FastSAM) ──
-    try:
-        from glass_masking import apply_glass_masking
-        image = apply_glass_masking(image)
-    except Exception as e:
-        print(f"FastSAM glass masking failed: {e}")
+    if ENABLE_GLASS_MASKING:
+        try:
+            from processing.glass_masking import apply_glass_masking
+            image = apply_glass_masking(image)
+        except Exception as e:
+            print(f"FastSAM glass masking failed: {e}")
 
     return image

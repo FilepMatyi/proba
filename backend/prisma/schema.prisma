@@ -23,6 +23,11 @@ model VehicleSession {
   dealershipId           Int
   dealership             Dealership @relation(fields: [dealershipId], references: [id])
   status                 String     @default("processing")  // processing, completed, failed
+  stage                  String     @default("uploading")   // uploading, extracting, selecting, composing, ready
+  errorMessage           String?
+  qualityScore           Int?
+  qualityWarnings        String     @default("[]")           // JSON tömb: rögzítési és maszk QA
+  qualityMetrics         String     @default("{}")           // JSON objektum: belső diagnosztika
   processedFrames        Int        @default(0)             // 0-tól 36-ig számol
   totalFrames            Int        @default(36)
   processedPhotoIndexes  String     @default("[]")           // JSON tömb, duplikáció-védelemhez
