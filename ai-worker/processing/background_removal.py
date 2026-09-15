@@ -1,16 +1,53 @@
 from rembg import new_session, remove
+from rembg.sessions import sessions_class
 from PIL import Image
 import io
 import os
 import cv2
 import numpy as np
+import onnxruntime as ort
+
+from processing.target_lock import (
+    DEFAULT_TARGET_CENTER,
+    mask_needs_refinement,
+    mask_profile,
+    select_primary_component,
+    should_use_refined_mask,
+    target_crop_box,
+)
 
 # ─── Configuration ───────────────────────────────────────────────────
-MODEL_NAME = os.getenv('REMBG_MODEL', 'u2net')
-_session = new_session(MODEL_NAME)
+MODEL_NAME = os.getenv('REMBG_MODEL', 'birefnet-general-lite')
 ENABLE_ALPHA_MATTING = os.getenv('ENABLE_ALPHA_MATTING', 'false').lower() == 'true'
 ENABLE_GLASS_REPAIR = os.getenv('ENABLE_GLASS_REPAIR', 'false').lower() == 'true'
 ENABLE_GLASS_MASKING = os.getenv('ENABLE_GLASS_MASKING', 'false').lower() == 'true'
+ENABLE_TARGET_LOCK = os.getenv('ENABLE_TARGET_LOCK', 'true').lower() == 'true'
+TARGET_LOCK_CROP_TOP = float(os.getenv('TARGET_LOCK_CROP_TOP', '0.16'))
+TARGET_LOCK_CROP_BOTTOM = float(os.getenv('TARGET_LOCK_CROP_BOTTOM', '0.96'))
+DISABLE_CPU_MEMORY_ARENA = os.getenv('ONNX_DISABLE_CPU_ARENA', 'true').lower() == 'true'
+
+
+def _create_model_session():
+    """Create a bounded-memory ONNX session for Docker Desktop deployments."""
+    if not DISABLE_CPU_MEMORY_ARENA:
+        return new_session(MODEL_NAME)
+
+    session_options = ort.SessionOptions()
+    session_options.enable_cpu_mem_arena = False
+    session_options.enable_mem_pattern = False
+    thread_count = max(1, int(os.getenv('OMP_NUM_THREADS', '4')))
+    session_options.inter_op_num_threads = thread_count
+    session_options.intra_op_num_threads = thread_count
+    session_class = next(
+        (candidate for candidate in sessions_class if candidate.name() == MODEL_NAME),
+        None,
+    )
+    if session_class is None:
+        raise ValueError(f'Unsupported rembg model: {MODEL_NAME}')
+    return session_class(MODEL_NAME, session_options)
+
+
+_session = _create_model_session()
 
 # Coverage thresholds — outside this range flags a frame for manual review
 COVERAGE_MIN = 0.10   # 10%
@@ -20,14 +57,14 @@ COVERAGE_MAX = 0.55   # 55%
 GLASS_R, GLASS_G, GLASS_B = 22, 28, 35
 
 
-def _cleanup_mask(image_rgba, photo_index=0):
+def _cleanup_mask(image_rgba, photo_index=0, target_center=DEFAULT_TARGET_CENTER, log_quality=True):
     """
     Post-process the alpha mask using OpenCV to remove background remnants.
 
     Steps:
     1. Threshold the alpha channel to find solid foreground.
-    2. Largest connected component — keeps ONLY the car, drops isolated
-       background fragments (buildings, fences, etc. that rembg missed).
+    2. Target-aware connected component selection keeps the framed vehicle,
+       even when another car or background object is slightly larger.
     Note: We removed the morphological OPEN/CLOSE because they eroded fine 
     details like side mirrors and antennas.
     """
@@ -37,32 +74,91 @@ def _cleanup_mask(image_rgba, photo_index=0):
     # Binarise alpha: > 10 → foreground
     _, binary = cv2.threshold(alpha, 10, 255, cv2.THRESH_BINARY)
 
-    # Keep only the largest connected component (= the car)
-    num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(
-        binary, connectivity=8
+    selected_alpha, component_details = select_primary_component(
+        alpha, target_center=target_center
     )
-    if num_labels > 2:
-        # Label 0 = background; find the largest foreground label
-        areas = stats[1:, cv2.CC_STAT_AREA]
-        largest_label = 1 + int(np.argmax(areas))
-        
-        # Where it's the largest component, keep original alpha, else 0
-        arr[:, :, 3] = np.where(labels == largest_label, alpha, 0)
+    arr[:, :, 3] = selected_alpha
 
     # ── Coverage ratio logging ──
     total_px = binary.shape[0] * binary.shape[1]
-    fg_px = int(np.count_nonzero(labels == largest_label if num_labels > 2 else binary))
+    fg_px = int(np.count_nonzero(selected_alpha > 10))
     ratio = fg_px / total_px
 
-    if ratio < COVERAGE_MIN or ratio > COVERAGE_MAX:
+    if log_quality and (ratio < COVERAGE_MIN or ratio > COVERAGE_MAX):
         print(
             f"⚠️  WARNING: frame {photo_index} coverage {ratio:.1%} "
             f"outside [{COVERAGE_MIN:.0%}-{COVERAGE_MAX:.0%}] — may need manual review"
         )
-    else:
+    elif log_quality:
         print(f"   Frame {photo_index} coverage: {ratio:.1%}")
 
-    return Image.fromarray(arr, 'RGBA')
+    return Image.fromarray(arr, 'RGBA'), component_details
+
+
+def _run_model(image_bytes):
+    if ENABLE_ALPHA_MATTING:
+        try:
+            return remove(
+                image_bytes,
+                session=_session,
+                alpha_matting=True,
+                alpha_matting_foreground_threshold=240,
+                alpha_matting_background_threshold=10,
+                alpha_matting_erode_size=3,
+                post_process_mask=True,
+            )
+        except Exception as error:
+            print(f"Alpha matting failed, falling back: {error}")
+    return remove(image_bytes, session=_session, post_process_mask=True)
+
+
+def _target_locked_retry(source, base_image, photo_index, target_center):
+    base_profile = mask_profile(np.array(base_image.getchannel('A')))
+    if not ENABLE_TARGET_LOCK or not mask_needs_refinement(base_profile):
+        return base_image, False, base_profile
+
+    width, height = source.size
+    crop_box = target_crop_box(
+        width,
+        height,
+        top_ratio=TARGET_LOCK_CROP_TOP,
+        bottom_ratio=TARGET_LOCK_CROP_BOTTOM,
+    )
+    crop = source.crop(crop_box)
+    crop_buffer = io.BytesIO()
+    crop.save(crop_buffer, format='JPEG', quality=95, subsampling=0)
+
+    crop_bytes = _run_model(crop_buffer.getvalue())
+    crop_image = Image.open(io.BytesIO(crop_bytes)).convert('RGBA')
+    crop_height = max(crop_box[3] - crop_box[1], 1)
+    crop_target_center = (
+        target_center[0],
+        (target_center[1] * height - crop_box[1]) / crop_height,
+    )
+    crop_image, _ = _cleanup_mask(
+        crop_image,
+        photo_index=photo_index,
+        target_center=crop_target_center,
+        log_quality=False,
+    )
+    local_profile = mask_profile(np.array(crop_image.getchannel('A')))
+    crop_boundary_touched = bool(
+        local_profile['touchesTop'] or local_profile['touchesBottom']
+    )
+
+    refined = Image.new('RGBA', source.size, (0, 0, 0, 0))
+    refined.paste(crop_image, crop_box[:2])
+    refined_profile = mask_profile(np.array(refined.getchannel('A')))
+    if should_use_refined_mask(
+        base_profile,
+        refined_profile,
+        crop_boundary_touched=crop_boundary_touched,
+    ):
+        print(f"   Frame {photo_index}: target-lock retry accepted")
+        return refined, True, refined_profile
+
+    print(f"   Frame {photo_index}: target-lock retry rejected; preserving full-frame mask")
+    return base_image, False, base_profile
 
 
 def _darken_windows_and_holes(image_rgba):
@@ -138,7 +234,12 @@ def _darken_windows_and_holes(image_rgba):
     return Image.fromarray(arr, 'RGBA')
 
 
-def remove_background(image_bytes, photo_index=0):
+def remove_background(
+    image_bytes,
+    photo_index=0,
+    target_center=DEFAULT_TARGET_CENTER,
+    return_metadata=False,
+):
     """
     Full background removal pipeline:
       1. rembg neural net segmentation
@@ -153,31 +254,18 @@ def remove_background(image_bytes, photo_index=0):
         PIL RGBA Image with clean mask and darkened windows
     """
     # ── 1. Neural net background removal ──
-    if ENABLE_ALPHA_MATTING:
-        try:
-            output_bytes = remove(
-                image_bytes,
-                session=_session,
-                alpha_matting=True,
-                alpha_matting_foreground_threshold=240,
-                alpha_matting_background_threshold=10,
-                alpha_matting_erode_size=3,
-                post_process_mask=True,
-            )
-        except Exception as e:
-            print(f"Alpha matting failed, falling back: {e}")
-            output_bytes = remove(
-                image_bytes, session=_session, post_process_mask=True
-            )
-    else:
-        output_bytes = remove(
-            image_bytes, session=_session, post_process_mask=True
-        )
-
+    output_bytes = _run_model(image_bytes)
     image = Image.open(io.BytesIO(output_bytes)).convert('RGBA')
 
-    # ── 2. Morphological mask cleanup ──
-    image = _cleanup_mask(image, photo_index)
+    # ── 2. Target-aware cleanup and guarded retry ──
+    image, component_details = _cleanup_mask(
+        image, photo_index, target_center=target_center
+    )
+    with Image.open(io.BytesIO(image_bytes)) as source_image:
+        source = source_image.convert('RGB').copy()
+    image, target_lock_applied, profile = _target_locked_retry(
+        source, image, photo_index, target_center
+    )
 
     # Glass repair changes visible vehicle details, so it is opt-in. The default
     # production path preserves the source pixels for marketplace trust.
@@ -192,4 +280,9 @@ def remove_background(image_bytes, photo_index=0):
         except Exception as e:
             print(f"FastSAM glass masking failed: {e}")
 
-    return image
+    metadata = {
+        **component_details,
+        'targetLockApplied': target_lock_applied,
+        'maskCoverage': round(profile['coverage'], 4),
+    }
+    return (image, metadata) if return_metadata else image

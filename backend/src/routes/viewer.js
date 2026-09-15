@@ -4,6 +4,7 @@ const express = require('express');
 const config = require('../config');
 const { minioClient, PROCESSED_BUCKET } = require('../lib/minioClient');
 const { normalizeVehicleId, parsePhotoIndex } = require('../lib/vehicleId');
+const sessionService = require('../services/sessionService');
 
 const router = express.Router();
 
@@ -29,10 +30,13 @@ async function listProcessedImages(vehicleId) {
     const match = /^processed-(\d+)\.jpg$/.exec(fileName);
     const index = match ? parsePhotoIndex(match[1], config.processing.targetFrames) : null;
     if (index !== null) {
+      const version = encodeURIComponent(
+        object.etag || object.lastModified?.getTime?.() || 'current',
+      );
       images.push({
         index,
-        preview: `/viewer/${vehicleId}/image/preview-${index}.jpg`,
-        hd: `/viewer/${vehicleId}/image/processed-${index}.jpg`,
+        preview: `/viewer/${vehicleId}/image/preview-${index}.jpg?v=${version}`,
+        hd: `/viewer/${vehicleId}/image/processed-${index}.jpg?v=${version}`,
       });
     }
   }
@@ -46,6 +50,10 @@ router.get('/viewer/:vehicleId', async (req, res) => {
     if (!vehicleId) return res.status(400).send('Invalid vehicle ID');
 
     const images = await listProcessedImages(vehicleId);
+    const session = await sessionService.getSession(vehicleId);
+    const qualityNeedsReview = session?.qualityScore !== null
+      && session?.qualityScore !== undefined
+      && session.qualityScore < 68;
     const nonce = crypto.randomBytes(18).toString('base64');
     const publicBaseUrl = config.baseUrl.replace(/\/$/, '');
     const canonicalUrl = `${publicBaseUrl}/viewer/${vehicleId}`;
@@ -66,6 +74,8 @@ router.get('/viewer/:vehicleId', async (req, res) => {
       nonce,
       canonicalUrl: escapeHtml(canonicalUrl),
       socialImageUrl: escapeHtml(`${publicBaseUrl}/viewer/${vehicleId}/image/processed-1.jpg`),
+      qualityNeedsReview,
+      qualityLabel: qualityNeedsReview ? 'Minőségellenőrzés szükséges' : 'Ellenőrzött képsorozat',
     }));
   } catch (error) {
     console.error('Viewer generation failed:', error);
@@ -127,7 +137,15 @@ router.get('/embed.js', (req, res) => {
   })();`);
 });
 
-function renderViewer({ vehicleId, imageSources, nonce, canonicalUrl, socialImageUrl }) {
+function renderViewer({
+  vehicleId,
+  imageSources,
+  nonce,
+  canonicalUrl,
+  socialImageUrl,
+  qualityNeedsReview = false,
+  qualityLabel = 'Ellenőrzött képsorozat',
+}) {
   return `<!doctype html>
 <html lang="hu">
 <head>
@@ -153,7 +171,7 @@ function renderViewer({ vehicleId, imageSources, nonce, canonicalUrl, socialImag
     .hint{position:absolute;z-index:8;left:50%;bottom:58px;transform:translateX(-50%);display:flex;align-items:center;gap:8px;padding:9px 13px;color:#303632;background:rgba(255,255,255,.76);border:1px solid rgba(0,0,0,.07);border-radius:999px;box-shadow:0 5px 22px rgba(0,0,0,.09);backdrop-filter:blur(10px);font-size:10px;font-weight:750;white-space:nowrap;transition:opacity .35s}.hint.hidden{opacity:0;pointer-events:none}.hint i{font-style:normal;font-size:15px}
     .controls{position:absolute;z-index:10;top:15px;right:15px;display:grid;gap:7px}.controls button{width:38px;height:38px;display:grid;place-items:center;border:1px solid rgba(0,0,0,.08);border-radius:11px;color:#242a26;background:rgba(255,255,255,.76);backdrop-filter:blur(10px);cursor:pointer;font-size:15px;font-weight:750;transition:transform .16s,background .16s}.controls button:disabled{opacity:.3;cursor:default}.controls button[aria-pressed="true"]{color:#11170a;background:var(--accent)}
     .timeline{position:absolute;z-index:9;left:50%;bottom:17px;transform:translateX(-50%);width:min(66%,520px);height:28px;display:flex;align-items:center;padding:0 11px;background:rgba(255,255,255,.7);border:1px solid rgba(0,0,0,.08);border-radius:999px;backdrop-filter:blur(10px)}.timeline input{width:100%;height:3px;margin:0;accent-color:#28322c;cursor:ew-resize}.toast{position:absolute;z-index:12;top:16px;left:50%;transform:translate(-50%,-12px);padding:9px 12px;color:#202621;background:rgba(255,255,255,.9);border-radius:999px;box-shadow:0 8px 30px rgba(0,0,0,.12);font-size:10px;font-weight:750;opacity:0;pointer-events:none;transition:.2s}.toast.visible{opacity:1;transform:translate(-50%,0)}
-    footer{height:62px;padding-top:17px;display:flex;align-items:flex-end;justify-content:space-between;gap:18px;color:var(--muted);font-size:10px}.vehicle{min-width:0;display:grid;gap:3px}.vehicle small{font-size:8px;font-weight:750;letter-spacing:.12em;text-transform:uppercase}.vehicle strong{overflow:hidden;text-overflow:ellipsis;color:#dfe4e1;font-size:12px;letter-spacing:.02em}.counter{font-variant-numeric:tabular-nums;font-weight:750}.counter b{color:var(--accent);font-weight:800}.quality{display:flex;align-items:center;gap:7px}.quality span{width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 9px var(--accent)}
+    footer{height:62px;padding-top:17px;display:flex;align-items:flex-end;justify-content:space-between;gap:18px;color:var(--muted);font-size:10px}.vehicle{min-width:0;display:grid;gap:3px}.vehicle small{font-size:8px;font-weight:750;letter-spacing:.12em;text-transform:uppercase}.vehicle strong{overflow:hidden;text-overflow:ellipsis;color:#dfe4e1;font-size:12px;letter-spacing:.02em}.counter{font-variant-numeric:tabular-nums;font-weight:750}.counter b{color:var(--accent);font-weight:800}.quality{display:flex;align-items:center;gap:7px}.quality span{width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 9px var(--accent)}.quality.review{color:#e8b75d}.quality.review span{background:#e8b75d;box-shadow:0 0 9px #e8b75d}
     @keyframes spin{to{transform:rotate(360deg)}}
     @media(hover:hover){.controls button:hover:not(:disabled){transform:translateY(-1px);background:white}}
     @media(max-width:600px){.shell{padding:12px}.stage{border-radius:18px}header{height:52px}.badge{display:none}.hint{bottom:54px}.controls{top:10px;right:10px}.controls button{width:36px;height:36px}.timeline{bottom:13px;width:74%}footer{height:55px}.quality{display:none}}
@@ -185,7 +203,7 @@ function renderViewer({ vehicleId, imageSources, nonce, canonicalUrl, socialImag
     <footer>
       <div class="vehicle"><small>Jármű</small><strong>${vehicleId}</strong></div>
       <div class="counter" aria-live="polite"><b id="current">01</b> / ${String(imageSources.length).padStart(2, '0')}</div>
-      <div class="quality"><span></span> Ellenőrzött képsorozat</div>
+      <div class="quality${qualityNeedsReview ? ' review' : ''}"><span></span> ${escapeHtml(qualityLabel)}</div>
     </footer>
   </main>
   <script nonce="${nonce}">

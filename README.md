@@ -8,7 +8,7 @@ Mobilos videóból automatikusan előállított, 36 nézetes prémium autóbemut
 2. Egy 30–40 másodperces videót készít, miközben körbejárja az autót.
 3. A backend 108 jelölt képkockát nyer ki a videóból.
 4. A worker a tájolás, élesség, expozíció, kontraszt és kiégett részletek alapján sorrendtartóan kiválaszt 36 egyedi nézetet.
-5. A képeken háttéreltávolítás, visszafogott expozíció-egységesítés és stabil méretezésű stúdiókompozíció fut.
+5. A képeken képi horizontbecslés, körkörösen simított dőléskorrekció, céljármű-zárral védett háttéreltávolítás, expozíció-egységesítés és stabil méretezésű, kontaktárnyékos stúdiókompozíció fut.
 6. Minden nézethez 1280 px-es gyorsnézet és 2400 px-es HD kép készül.
 7. A dashboard élőben jelzi az állapotot és a minőségi pontszámot, majd megosztható és beágyazható 360° viewer készül.
 
@@ -86,11 +86,28 @@ Worker változók:
 BACKEND_URL=http://backend:3000
 INTERNAL_API_TOKEN=development-only-change-me
 TARGET_FRAMES=36
-ENABLE_UPSCALE=false
 ENABLE_ALPHA_MATTING=false
 ENABLE_GLASS_REPAIR=false
-ENABLE_GLASS_MASKING=false
-REMBG_MODEL=birefnet-general
+ENABLE_TARGET_LOCK=true
+MAX_ROLL_CORRECTION=3.5
+MAX_VEHICLE_ROLL_CORRECTION=5.5
+MAX_PROCESSING_SIDE=1920
+STALE_AFTER_MS=120000
+TARGET_LOCK_CROP_TOP=0.16
+TARGET_LOCK_CROP_BOTTOM=0.96
+REMBG_MODEL=birefnet-general-lite
+AI_WORKER_THREADS=4
+ONNX_DISABLE_CPU_ARENA=true
+```
+
+A produkciós worker image csak az aktív feldolgozási út függőségeit tartalmazza. A korábbi, alapértelmezetten kikapcsolt FastSAM- és Real-ESRGAN-kísérletek nincsenek a képbe építve, mert a Torch/Ultralytics csomaglánc egy második OpenCV-disztribúciót telepített és bizonytalanná tette a buildet.
+
+A `birefnet-general-lite` egyetlen workeres alapbeállítással fut: egy 1080p inference átmenetileg több GB memóriát használhat, ezért 8 GB-os Docker Desktop keretnél ne emeld a replikaszámot külön mérés nélkül. Nagyobb szerveren a worker külön gépekre skálázható.
+
+Már kivágott projektek újrastabilizálhatók a neurális modell ismételt futtatása nélkül:
+
+```bash
+docker compose run --rm ai-worker python recompose.py jarmu-azonosito
 ```
 
 Éles környezetben kötelező lecserélni a MinIO jelszót és az `INTERNAL_API_TOKEN` értékét, valamint konkrét originre szűkíteni az `ALLOWED_ORIGIN` beállítást.

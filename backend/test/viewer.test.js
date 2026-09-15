@@ -22,4 +22,20 @@ test('viewer emits valid progressive-loading client JavaScript', () => {
   assert.match(html, /adaptív HD/);
   assert.match(html, /preview-1\.jpg/);
   assert.match(html, /processed-1\.jpg/);
+  assert.match(html, /Ellenőrzött képsorozat/);
+});
+
+test('viewer marks a low-quality sequence for review', () => {
+  const html = viewerRouter.renderViewer({
+    vehicleId: 'review-car',
+    imageSources: [],
+    nonce: 'test-nonce',
+    canonicalUrl: 'https://example.com/viewer/review-car',
+    socialImageUrl: 'https://example.com/viewer/review-car/image/processed-1.jpg',
+    qualityNeedsReview: true,
+    qualityLabel: 'Minőségellenőrzés szükséges',
+  });
+
+  assert.match(html, /class="quality review"/);
+  assert.match(html, /Minőségellenőrzés szükséges/);
 });

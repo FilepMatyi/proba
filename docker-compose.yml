@@ -64,7 +64,10 @@ services:
       - /app/node_modules
 
   ai-worker:
-    build: ./ai-worker
+    build:
+      context: ./ai-worker
+      args:
+        REMBG_MODEL: ${REMBG_MODEL:-birefnet-general-lite}
     environment:
       MINIO_ENDPOINT: minio
       MINIO_PORT: 9000
@@ -76,18 +79,28 @@ services:
       TARGET_FRAMES: 36
       ENABLE_ALPHA_MATTING: 'false'
       ENABLE_GLASS_REPAIR: 'false'
-      ENABLE_GLASS_MASKING: 'false'
-      ENABLE_UPSCALE: 'false'
-      ESRGAN_SCALE: '2'
-      REMBG_MODEL: birefnet-general
+      ENABLE_TARGET_LOCK: ${ENABLE_TARGET_LOCK:-true}
+      MAX_ROLL_CORRECTION: ${MAX_ROLL_CORRECTION:-3.5}
+      MAX_VEHICLE_ROLL_CORRECTION: ${MAX_VEHICLE_ROLL_CORRECTION:-5.5}
+      MAX_PROCESSING_SIDE: ${MAX_PROCESSING_SIDE:-1920}
+      STALE_AFTER_MS: ${STALE_AFTER_MS:-120000}
+      TARGET_LOCK_CROP_TOP: ${TARGET_LOCK_CROP_TOP:-0.16}
+      TARGET_LOCK_CROP_BOTTOM: ${TARGET_LOCK_CROP_BOTTOM:-0.96}
+      REMBG_MODEL: ${REMBG_MODEL:-birefnet-general-lite}
+      OMP_NUM_THREADS: ${AI_WORKER_THREADS:-4}
+      ONNX_DISABLE_CPU_ARENA: ${ONNX_DISABLE_CPU_ARENA:-true}
+      PYTHONUNBUFFERED: '1'
     depends_on:
       - minio
       - redis
       - backend
     volumes:
       - ./ai-worker:/app
+    restart: unless-stopped
     deploy:
-      replicas: 2
+      # A single CPU BiRefNet inference can temporarily use several GB of RAM.
+      # One worker is the safe default on an 8 GB Docker Desktop allocation.
+      replicas: 1
 
 volumes:
   minio_data:

@@ -163,106 +163,47 @@ def _draw_turntable(canvas, cw, ch):
     return top_y
 
 
-import cv2
+def _draw_grounded_shadow(canvas, car_x, vehicle, ground_y):
+    """Draw a restrained showroom contact shadow below the vehicle.
 
-def _draw_generative_shadow(canvas, cw, ch, car_x, car_y, vehicle):
+    Projecting the full alpha silhouette creates dark side lobes when a source
+    photo is clipped. A grounded pair of ellipses is temporally stable across
+    all viewpoints and keeps the visual weight underneath the tires.
     """
-    Project the vehicle's alpha mask to create a realistic drop shadow
-    that perfectly matches the silhouette.
-    """
-    vw, vh = vehicle.size
-    
-    # 1. Extract the alpha channel as a numpy array
-    alpha = np.array(vehicle)[:, :, 3]
-    
-    # 2. Pad the mask to prevent clipping during shear
-    pad = int(cw * 0.2)
-    canvas_w, canvas_h = vw + pad * 2, vh + pad * 2
-    padded = np.zeros((canvas_h, canvas_w), dtype=np.uint8)
-    padded[pad:pad+vh, pad:pad+vw] = alpha
-    
-    # 3. Affine Transform (Shear and Squash)
-    # The car is at (pad, pad). We want to squash it vertically (scale_y = 0.15)
-    # and shear it slightly to the right to simulate ambient lighting.
-    src_pts = np.float32([[pad, pad], [pad+vw, pad], [pad, pad+vh]])
-    
-    scale_y = 0.15
-    offset_y = vh * 0.35  # Push down so it sits under the tires
-    shear_x = 50
-    
-    dst_pts = np.float32([
-        [pad - shear_x, pad * scale_y + offset_y + pad],
-        [pad + vw + shear_x, pad * scale_y + offset_y + pad],
-        [pad, (pad+vh) * scale_y + offset_y + pad]
-    ])
-    
-    M = cv2.getAffineTransform(src_pts, dst_pts)
-    shadow_cv = cv2.warpAffine(padded, M, (canvas_w, canvas_h))
-    
-    # 4. Convert to PIL
-    shadow_img = Image.fromarray(shadow_cv, mode='L')
-    
-    # 5. Create multiple blurred layers for soft lighting
-    # Contact shadow (dark, tight)
-    blur1 = shadow_img.filter(ImageFilter.GaussianBlur(10))
-    blur1 = blur1.point(lambda p: p * 0.85)
-    
-    # Mid shadow (medium, softer)
-    blur2 = shadow_img.filter(ImageFilter.GaussianBlur(25))
-    blur2 = blur2.point(lambda p: p * 0.6)
-    
-    # Ambient shadow (very wide, faint)
-    blur3 = shadow_img.filter(ImageFilter.GaussianBlur(50))
-    blur3 = blur3.point(lambda p: p * 0.35)
-    
-    # Combine layers
-    shadow_final = ImageChops.add(blur1, blur2)
-    shadow_final = ImageChops.add(shadow_final, blur3)
-    
-    # 5b. Ambient Occlusion — tight dark shadow directly under the car
-    # To prevent a black halo around the roof/sides, only apply this to the bottom of the mask
-    ao_arr = np.copy(padded)
+    vehicle_width, vehicle_height = vehicle.size
+    center_x = car_x + vehicle_width // 2
 
-    # Mask out everything except the bottom 25% of the car
-    # Find the car's vertical bounds in the padded array
-    nonzero_y = np.where(ao_arr.any(axis=1))[0]
-    if len(nonzero_y) > 0:
-        car_top = nonzero_y[0]
-        car_bottom = nonzero_y[-1]
-        car_h = car_bottom - car_top
+    ambient_width = max(120, int(vehicle_width * 0.88))
+    ambient_height = max(24, int(vehicle_height * 0.075))
+    ambient = Image.new('RGBA', canvas.size, (0, 0, 0, 0))
+    ambient_draw = ImageDraw.Draw(ambient)
+    ambient_draw.ellipse(
+        [
+            center_x - ambient_width // 2,
+            ground_y - ambient_height // 2,
+            center_x + ambient_width // 2,
+            ground_y + ambient_height // 2,
+        ],
+        fill=(18, 20, 25, 48),
+    )
+    ambient = ambient.filter(ImageFilter.GaussianBlur(radius=28))
+    canvas.paste(ambient, (0, 0), ambient)
 
-        # Zero out the top 75% of the car so only the wheels/underbody cast AO
-        ao_arr[:int(car_bottom - car_h * 0.25), :] = 0
-
-        # Soften the cutoff so it doesn't leave a hard line
-        fade_start = int(car_bottom - car_h * 0.25)
-        fade_end = int(car_bottom - car_h * 0.15)
-        for y in range(fade_start, min(fade_end, len(ao_arr))):
-            alpha_mult = (y - fade_start) / max(1, fade_end - fade_start)
-            ao_arr[y, :] = (ao_arr[y, :] * alpha_mult).astype(np.uint8)
-
-    ao_mask = Image.fromarray(ao_arr, mode='L')
-
-    # Shift it down slightly and blur tightly
-    ao_shifted = Image.new('L', (canvas_w, canvas_h), 0)
-    ao_shifted.paste(ao_mask, (0, 8))  # 8px down
-    ao_blur = ao_shifted.filter(ImageFilter.GaussianBlur(6))
-    ao_blur = ao_blur.point(lambda p: min(255, int(p * 1.2)))  # Intensify
-    
-    # Combine AO with the projected shadow
-    shadow_final = ImageChops.add(shadow_final, ao_blur)
-    
-    # 6. Paste onto canvas
-    shadow_rgba = Image.new('RGBA', (canvas_w, canvas_h), (0,0,0,0))
-    shadow_rgba.putalpha(shadow_final)
-    
-    # The vehicle is pasted at (car_x, car_y) on the main canvas.
-    # In our padded shadow image, the top-left of the original vehicle was at (pad, pad).
-    # So the top-left of the shadow image should be placed at (car_x - pad, car_y - pad)
-    target_x = car_x - pad
-    target_y = car_y - pad
-    
-    canvas.paste(shadow_rgba, (target_x, target_y), shadow_rgba)
+    contact_width = max(100, int(vehicle_width * 0.64))
+    contact_height = max(12, int(vehicle_height * 0.026))
+    contact = Image.new('RGBA', canvas.size, (0, 0, 0, 0))
+    contact_draw = ImageDraw.Draw(contact)
+    contact_draw.ellipse(
+        [
+            center_x - contact_width // 2,
+            ground_y - contact_height // 2,
+            center_x + contact_width // 2,
+            ground_y + contact_height // 2,
+        ],
+        fill=(12, 14, 18, 78),
+    )
+    contact = contact.filter(ImageFilter.GaussianBlur(radius=11))
+    canvas.paste(contact, (0, 0), contact)
 
 
 def _draw_reflection(canvas, vehicle, car_x, sit_y, wheel_bottom_local):
@@ -299,7 +240,7 @@ def _draw_reflection(canvas, vehicle, car_x, sit_y, wheel_bottom_local):
 # MAIN ENTRY POINT
 # ═══════════════════════════════════════════════════════════════════════
 
-def create_studio_image(vehicle_image, global_max_h=None):
+def create_studio_image(vehicle_image, global_max_h=None, target_height_ratio=None):
     """
     Place vehicle onto a studio turntable.
 
@@ -312,8 +253,10 @@ def create_studio_image(vehicle_image, global_max_h=None):
 
     Args:
         vehicle_image: PIL RGBA Image with transparent background
-        global_max_h: The maximum height of the vehicle's bbox across all 36 frames. 
-                      Used to scale all frames consistently and prevent "breathing" zooms.
+        global_max_h: Fallback sequence-wide reference height.
+        target_height_ratio: Circularly smoothed output height relative to the
+                             standard target height. This removes frame jitter
+                             without flattening slow perspective changes.
 
     Returns:
         PIL RGB Image on studio canvas
@@ -331,15 +274,13 @@ def create_studio_image(vehicle_image, global_max_h=None):
     # ── Scale car ──
     vw, vh = vehicle_image.size
     
-    # Use global_max_h if provided, otherwise fallback to local vh
-    reference_vh = global_max_h if global_max_h else vh
-    
     target_h = int(ch * CAR_HEIGHT_FILL)
-    
-    # Scale factor is based on the REFERENCE height, not the local height.
-    # This guarantees that if this frame is slightly smaller than the max frame,
-    # it stays proportionally smaller on the canvas, preventing fake zooming!
-    scale = target_h / reference_vh
+    if target_height_ratio is not None:
+        safe_ratio = max(0.84, min(float(target_height_ratio), 1.02))
+        scale = (target_h * safe_ratio) / max(vh, 1)
+    else:
+        reference_vh = global_max_h if global_max_h else vh
+        scale = target_h / reference_vh
     
     # Ensure the scaled width doesn't exceed 90% of the canvas width
     if (vw * scale) > int(cw * 0.90):
@@ -369,7 +310,7 @@ def create_studio_image(vehicle_image, global_max_h=None):
     canvas = _make_background(cw, ch, plat_top_y)
     _draw_reflection(canvas, vehicle_scaled, car_x, plat_top_y, wheel_bottom_local)
     _draw_turntable(canvas, cw, ch)
-    _draw_generative_shadow(canvas, cw, ch, car_x, car_y, vehicle_scaled)
+    _draw_grounded_shadow(canvas, car_x, vehicle_scaled, plat_top_y)
     canvas.paste(vehicle_scaled, (car_x, car_y), vehicle_scaled)
 
     # ── Contrast boost for punch ──

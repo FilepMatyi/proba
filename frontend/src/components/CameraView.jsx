@@ -261,8 +261,10 @@ export default function CameraView({ vehicleId, onVideoRecorded, onCancel }) {
       <section className="camera-guide">
         <p className="camera-instruction">
           {isRecording
-            ? (lightingMessage || (canFinish ? 'Érj vissza a kezdőponthoz, majd állítsd le' : 'Haladj lassan, egyenletes íven az autó körül'))
-            : 'Állj a bal első sarokhoz, az egész autó legyen a keretben'}
+            ? (lightingMessage || (canFinish
+              ? 'Érj vissza a kezdőponthoz, majd állítsd le'
+              : 'Haladj lassan; hagyj helyet az autó körül, és kerüld más járművek átfedését'))
+            : 'Az egész autó maradjon a jelölésen belül, másik jármű ne takarja'}
         </p>
         {cameraError && <p className="camera-error">{cameraError}</p>}
       </section>

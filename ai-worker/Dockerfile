@@ -2,25 +2,21 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    wget \
-    libgl1 \
-    libglib2.0-0 \
+# ONNX Runtime uses OpenMP. The headless OpenCV wheel does not need libGL.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
 
-# Install PyTorch CPU first to avoid nvidia-cublas conflict
-RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu
+RUN python -m pip install --no-cache-dir --upgrade pip
+RUN python -m pip install --no-cache-dir -r requirements.txt
 
-# Install basicsr with dependencies properly resolved now that torch is present
-RUN pip install --no-cache-dir basicsr realesrgan
-
-# Install remaining requirements
-RUN pip install --no-cache-dir -r requirements.txt
-# Pre-bake u2net model at build time to avoid runtime network dependency
-RUN python -c "from rembg import new_session; new_session('birefnet-general')"
+# Fail the image build early if the configured model name is unsupported and
+# cache the model so production workers never depend on a first-request download.
+ARG REMBG_MODEL=birefnet-general-lite
+ENV REMBG_MODEL=${REMBG_MODEL}
+RUN python -c "import os; from rembg import new_session; new_session(os.environ['REMBG_MODEL']); print('Cached rembg model:', os.environ['REMBG_MODEL'])"
 
 COPY . .
 

@@ -12,6 +12,7 @@ const { normalizeVehicleId } = require('../lib/vehicleId');
 const photoQueue = require('../queues/photoQueue');
 const redis = require('../lib/redisConnection');
 const sessionService = require('../services/sessionService');
+const { parseVideoInfo } = require('../lib/videoMetadata');
 
 const router = express.Router();
 const VIDEO_TYPES = new Map([
@@ -72,7 +73,10 @@ router.post('/vehicles/:vehicleId/video', (req, res) => {
         resetVehicleAssets(vehicleId),
         redis.del(
           `vehicle:${vehicleId}:heights`,
+          `vehicle:${vehicleId}:layout`,
+          `vehicle:${vehicleId}:rolls`,
           `vehicle:${vehicleId}:mask_quality`,
+          `vehicle:${vehicleId}:selection_quality`,
           `vehicle:${vehicleId}:bg_done`,
           `vehicle:${vehicleId}:studio_queued`,
           `vehicle:${vehicleId}:studio_done`,
@@ -140,6 +144,9 @@ async function processVideo({ vehicleId, videoPath, sensorData }) {
     if (videoInfo.width * videoInfo.height < 900000) {
       captureWarnings.push('A videó felbontása alacsonyabb az ajánlott 1080p minőségnél.');
     }
+    if (videoInfo.orientation === 'portrait') {
+      captureWarnings.push('Álló tájolású felvétel: tarts nagyobb távolságot, hogy az egész autó minden nézetben a képen maradjon.');
+    }
     await sessionService.updateQualityReport(vehicleId, {
       warnings: captureWarnings,
       metrics: { capture: videoInfo },
@@ -202,22 +209,10 @@ async function remuxVideo(inputPath) {
 async function probeVideo(inputPath) {
   const probeOutput = await runProcess('ffprobe', [
     '-v', 'error', '-select_streams', 'v:0',
-    '-show_entries', 'format=duration:stream=width,height', '-of', 'json', inputPath,
+    '-show_entries', 'format=duration:stream=width,height:stream_tags=rotate:stream_side_data=rotation',
+    '-of', 'json', inputPath,
   ]);
-  const probe = JSON.parse(probeOutput);
-  const stream = probe.streams?.[0] || {};
-  const info = {
-    duration: Number.parseFloat(probe.format?.duration),
-    width: Number.parseInt(stream.width, 10),
-    height: Number.parseInt(stream.height, 10),
-  };
-  if (!Number.isFinite(info.duration) || info.duration <= 0) {
-    throw new Error('A videó hossza nem állapítható meg.');
-  }
-  if (!Number.isInteger(info.width) || !Number.isInteger(info.height)) {
-    throw new Error('A videó felbontása nem állapítható meg.');
-  }
-  return { ...info, duration: Math.round(info.duration * 100) / 100 };
+  return parseVideoInfo(JSON.parse(probeOutput));
 }
 
 async function extractFrames(inputPath, outputDirectory, frameCount, duration) {
@@ -227,7 +222,8 @@ async function extractFrames(inputPath, outputDirectory, frameCount, duration) {
   await runProcess('ffmpeg', [
     '-hide_banner', '-loglevel', 'error', '-y', '-i', inputPath,
     '-ss', String(edgeTrim), '-t', String(usableDuration),
-    '-vf', `fps=${frameCount}/${usableDuration}`, '-frames:v', String(frameCount), '-q:v', '2',
+    '-vf', `fps=${frameCount}/${usableDuration},scale=1920:1920:force_original_aspect_ratio=decrease`,
+    '-frames:v', String(frameCount), '-q:v', '2',
     path.join(outputDirectory, 'frame-%03d.jpg'),
   ]);
 }

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { BrowserRouter, Route, Routes, useNavigate } from 'react-router-dom';
-import { ArrowRight, Check, ChevronRight, Gauge, LayoutDashboard, Rotate3D, ShieldCheck, Sparkles } from 'lucide-react';
+import { AlertTriangle, ArrowRight, Check, ChevronRight, Gauge, LayoutDashboard, Rotate3D, ShieldCheck, Sparkles } from 'lucide-react';
 
 import CameraView from './components/CameraView';
 import Dashboard from './components/Dashboard';
@@ -103,19 +103,27 @@ function CaptureFlow() {
   if (appState === 'PROCESSING') {
     const completed = processingSession?.status === 'completed';
     const warnings = sessionWarnings(processingSession);
+    const needsReview = completed && (
+      warnings.length > 0
+      || (processingSession?.qualityScore !== null
+        && processingSession?.qualityScore !== undefined
+        && processingSession.qualityScore < 68)
+    );
     const progress = processingSession
       ? Math.round((processingSession.processedFrames / processingSession.totalFrames) * 100)
       : 4;
     return (
       <main className="status-screen">
         <div className="status-card">
-          <div className={`orb ${completed ? 'orb-success' : 'orb-processing'}`}>
-            {completed ? <Check size={34} /> : <span>{progress}%</span>}
+          <div className={`orb ${needsReview ? 'orb-review' : completed ? 'orb-success' : 'orb-processing'}`}>
+            {needsReview ? <AlertTriangle size={34} /> : completed ? <Check size={34} /> : <span>{progress}%</span>}
           </div>
-          <p className="eyebrow">{completed ? 'Bemutatóra kész' : normalizedVehicleId}</p>
-          <h1>{completed ? 'Elkészült a prémium 360°' : STAGE_LABELS[processingSession?.stage] || 'A vizuális stúdió dolgozik'}</h1>
+          <p className="eyebrow">{needsReview ? 'Új felvétel ajánlott' : completed ? 'Bemutatóra kész' : normalizedVehicleId}</p>
+          <h1>{needsReview ? 'Minőségellenőrzés szükséges' : completed ? 'Elkészült a prémium 360°' : STAGE_LABELS[processingSession?.stage] || 'A vizuális stúdió dolgozik'}</h1>
           <p className="muted">
-            {completed
+            {needsReview
+              ? 'Mind a 36 nézet elkészült, de a sorozatot megosztás előtt ellenőrizni vagy újra rögzíteni kell.'
+              : completed
               ? 'Mind a 36 nézet elkészült, a bemutató azonnal megosztható.'
               : `${processingSession?.processedFrames || 0} / 36 végleges kép készült el. Ezt az oldalt már bezárhatod.`}
           </p>

@@ -24,6 +24,15 @@ from config import (
 )
 from processing.background_removal import remove_background
 from processing.frame_selector import analyze_image_quality, select_optimal_frames
+from processing.quality_report import segmentation_quality_report
+from processing.stabilization import (
+    apply_sequence_roll_plan,
+    build_sequence_layout,
+    estimate_visual_roll,
+    level_source_image,
+    smooth_roll_measurements,
+    stabilize_vehicle_sequence,
+)
 from processing.studio_compose import create_studio_image
 
 
@@ -32,7 +41,7 @@ CONSUMER_GROUP = 'photo-processing-group'
 CONSUMER_NAME = f'worker-{uuid.uuid4()}'
 DEAD_LETTER_STREAM = 'photo-processing-dead-letter'
 MAX_ATTEMPTS = 3
-STALE_AFTER_MS = 30 * 60 * 1000
+STALE_AFTER_MS = max(60_000, int(os.getenv('STALE_AFTER_MS', '120000')))
 STATE_TTL_SECONDS = 24 * 60 * 60
 
 minio_client = Minio(
@@ -54,7 +63,7 @@ def _download_bytes(bucket, object_key):
 
 
 def _expire_state_keys(vehicle_id):
-    for suffix in ('heights', 'mask_quality', 'bg_done', 'studio_queued', 'studio_done'):
+    for suffix in ('heights', 'layout', 'rolls', 'mask_quality', 'selection_quality', 'bg_done', 'studio_queued', 'studio_done'):
         redis_client.expire(f'vehicle:{vehicle_id}:{suffix}', STATE_TTL_SECONDS)
 
 
@@ -196,8 +205,35 @@ def handle_select_frames(fields):
         sensor_data
         and any(abs(item.get('unwrapped_alpha', 0.0)) > 0.0 for group in candidate_groups for item in group)
     )
+    roll_measurements = []
+    for selected_detail in selected_details:
+        image_bytes = _download_bytes(
+            RAW_BUCKET,
+            candidate_keys[selected_detail['candidateIndex']],
+        )
+        roll_measurements.append(estimate_visual_roll(image_bytes))
+    roll_plan = smooth_roll_measurements(roll_measurements)
+    for selected_detail, roll_item in zip(selected_details, roll_plan):
+        selected_detail['roll'] = roll_item
+
     quality_score, warnings, metrics = _selection_report(
         selected_details, sensor_assisted, frame_count
+    )
+    metrics['stabilizationInput'] = {
+        'visualRoll': True,
+        'averageConfidence': round(
+            sum(item['planConfidence'] for item in roll_plan) / max(len(roll_plan), 1), 4
+        ),
+        'correctedFrames': sum(abs(item['correction']) >= 0.04 for item in roll_plan),
+        'maximumCorrectionDegrees': round(
+            max((abs(item['correction']) for item in roll_plan), default=0.0), 3
+        ),
+        'limitedFrames': sum(bool(item['limited']) for item in roll_plan),
+    }
+    redis_client.setex(
+        f'vehicle:{vehicle_id}:selection_quality',
+        STATE_TTL_SECONDS,
+        str(quality_score),
     )
     notify_backend_quality(vehicle_id, quality_score, warnings, metrics)
 
@@ -208,6 +244,8 @@ def handle_select_frames(fields):
             'vehicleId': vehicle_id,
             'photoIndex': str(output_offset + 1),
             'candidateKey': candidate_keys[best_index],
+            'rollCorrection': str(selected_detail['roll']['correction']),
+            'rollConfidence': str(selected_detail['roll']['planConfidence']),
         })
 
     print(f'[{vehicle_id}] Selected and queued {len(selected)} unique frames')
@@ -217,6 +255,10 @@ def handle_bg_removal(fields):
     vehicle_id = fields['vehicleId']
     photo_index = int(fields['photoIndex'])
     image_bytes = _download_bytes(RAW_BUCKET, fields['candidateKey'])
+    roll_correction = float(fields.get('rollCorrection', 0.0))
+    # Bound 4K memory before inference, but preserve the unrotated source edge
+    # so clipping remains visible to the mask quality checks below.
+    image_bytes = level_source_image(image_bytes, 0.0)
 
     if os.getenv('ENABLE_UPSCALE', 'false').lower() == 'true':
         try:
@@ -225,7 +267,11 @@ def handle_bg_removal(fields):
         except Exception as error:
             print(f'[{vehicle_id}] Upscale skipped for frame {photo_index}: {error}')
 
-    vehicle_image = remove_background(image_bytes, photo_index=photo_index)
+    vehicle_image, removal_metadata = remove_background(
+        image_bytes,
+        photo_index=photo_index,
+        return_metadata=True,
+    )
     bounding_box = vehicle_image.getbbox()
     vehicle_height = bounding_box[3] - bounding_box[1] if bounding_box else vehicle_image.height
     if bounding_box:
@@ -254,11 +300,16 @@ def handle_bg_removal(fields):
     )
 
     redis_client.hset(f'vehicle:{vehicle_id}:heights', str(photo_index), str(vehicle_height))
+    redis_client.hset(f'vehicle:{vehicle_id}:rolls', str(photo_index), str(roll_correction))
     redis_client.hset(f'vehicle:{vehicle_id}:mask_quality', str(photo_index), json.dumps({
         'bboxWidthRatio': round(bbox_width, 4),
         'bboxHeightRatio': round(bbox_height, 4),
         'alphaCoverage': round(alpha_coverage, 4),
         'touchesEdge': touches_edge,
+        'targetLockApplied': removal_metadata['targetLockApplied'],
+        'sourceComponentCount': removal_metadata['componentCount'],
+        'rollCorrection': round(roll_correction, 4),
+        'rollConfidence': round(float(fields.get('rollConfidence', 0.0)), 4),
     }))
     redis_client.sadd(f'vehicle:{vehicle_id}:bg_done', str(photo_index))
     _expire_state_keys(vehicle_id)
@@ -289,23 +340,9 @@ def summarize_mask_quality(vehicle_id):
     if not metrics:
         return
 
-    edge_frames = sum(bool(item.get('touchesEdge')) for item in metrics)
-    small_frames = sum(item.get('bboxWidthRatio', 0) < 0.32 for item in metrics)
-    warnings = []
-    if edge_frames:
-        warnings.append(f'{edge_frames} nézetben a jármű közel került a képszélhez; ellenőrzés ajánlott.')
-    if small_frames >= 4:
-        warnings.append('A jármű több nézetben túl kicsi a képen; a következő felvételnél menj közelebb.')
-
-    notify_backend_quality(vehicle_id, None, warnings, {
-        'segmentation': {
-            'edgeTouchingFrames': edge_frames,
-            'smallVehicleFrames': small_frames,
-            'averageAlphaCoverage': round(
-                sum(item.get('alphaCoverage', 0) for item in metrics) / len(metrics), 4
-            ),
-        }
-    })
+    selection_score = redis_client.get(f'vehicle:{vehicle_id}:selection_quality')
+    quality_score, warnings, report = segmentation_quality_report(metrics, selection_score)
+    notify_backend_quality(vehicle_id, quality_score, warnings, report)
 
 
 def normalize_transparent_frames(vehicle_id):
@@ -318,7 +355,21 @@ def normalize_transparent_frames(vehicle_id):
             with Image.open(io.BytesIO(image_bytes)) as image:
                 images[index] = image.convert('RGBA').copy()
 
-        for index, image in normalize_exposure(images).items():
+        raw_rolls = redis_client.hgetall(f'vehicle:{vehicle_id}:rolls')
+        roll_plan = {
+            int(index): float(value)
+            for index, value in raw_rolls.items()
+        }
+        scene_levelled_images = apply_sequence_roll_plan(images, roll_plan)
+        stabilized_images, vehicle_level_report = stabilize_vehicle_sequence(
+            scene_levelled_images
+        )
+        normalized_images = normalize_exposure(stabilized_images)
+        layout, stabilization_report = build_sequence_layout(normalized_images)
+        stabilization_report.update(vehicle_level_report)
+        redis_client.delete(f'vehicle:{vehicle_id}:layout')
+
+        for index, image in normalized_images.items():
             output = io.BytesIO()
             image.save(output, format='PNG', optimize=True)
             output.seek(0)
@@ -329,8 +380,26 @@ def normalize_transparent_frames(vehicle_id):
                 length=output.getbuffer().nbytes,
                 content_type='image/png',
             )
+            redis_client.hset(
+                f'vehicle:{vehicle_id}:layout',
+                str(index),
+                json.dumps(layout.get(index, {})),
+            )
+            if index in layout:
+                redis_client.hset(
+                    f'vehicle:{vehicle_id}:heights',
+                    str(index),
+                    str(layout[index]['sourceHeight']),
+                )
+        _expire_state_keys(vehicle_id)
+        notify_backend_quality(
+            vehicle_id,
+            None,
+            [],
+            {'stabilization': stabilization_report},
+        )
     except Exception as error:
-        print(f'[{vehicle_id}] Exposure normalization skipped: {error}')
+        print(f'[{vehicle_id}] Sequence normalization skipped: {error}')
 
 
 def handle_studio(fields):
@@ -340,12 +409,23 @@ def handle_studio(fields):
     ordered_heights = sorted(int(value) for value in heights.values())
     reference_index = round((len(ordered_heights) - 1) * 0.9) if ordered_heights else 0
     reference_height = ordered_heights[reference_index] if ordered_heights else 1000
+    layout = {}
+    try:
+        layout = json.loads(
+            redis_client.hget(f'vehicle:{vehicle_id}:layout', str(photo_index)) or '{}'
+        )
+    except (TypeError, ValueError):
+        pass
 
     image_bytes = _download_bytes(RAW_BUCKET, fields['transparentKey'])
     with Image.open(io.BytesIO(image_bytes)) as image:
         vehicle_image = image.convert('RGBA').copy()
 
-    studio_image = create_studio_image(vehicle_image, global_max_h=reference_height)
+    studio_image = create_studio_image(
+        vehicle_image,
+        global_max_h=reference_height,
+        target_height_ratio=layout.get('targetHeightRatio'),
+    )
     output = io.BytesIO()
     studio_image.save(output, format='JPEG', quality=94, subsampling=0, optimize=True)
     output.seek(0)

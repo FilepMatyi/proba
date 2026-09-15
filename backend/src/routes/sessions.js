@@ -95,7 +95,10 @@ router.delete('/sessions/:vehicleId', async (req, res) => {
     await resetVehicleAssets(vehicleId);
     await redis.del(
       `vehicle:${vehicleId}:heights`,
+      `vehicle:${vehicleId}:layout`,
+      `vehicle:${vehicleId}:rolls`,
       `vehicle:${vehicleId}:mask_quality`,
+      `vehicle:${vehicleId}:selection_quality`,
       `vehicle:${vehicleId}:bg_done`,
       `vehicle:${vehicleId}:studio_queued`,
       `vehicle:${vehicleId}:studio_done`,

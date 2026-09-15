@@ -1,9 +1,10 @@
-rembg==2.0.50
-Pillow==10.1.0
+# Keep the production image-processing stack reproducible. rembg's CPU extra
+# installs the ONNX Runtime backend required by new_session().
+rembg[cpu]==2.0.75
+Pillow==12.1.1
 redis==5.0.1
 minio==7.2.0
 python-dotenv==1.0.0
 requests==2.31.0
-numpy>=1.24.0
-opencv-python-headless>=4.8.0
-ultralytics
+numpy==2.3.5
+opencv-python-headless==4.13.0.92
