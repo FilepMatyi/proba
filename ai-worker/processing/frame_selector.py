@@ -12,7 +12,10 @@ def quality_score(metrics):
     contrast = _clamp(metrics.get('contrast', 0.0) / 52.0)
     clipped = metrics.get('black_clip_ratio', 0.0) + metrics.get('white_clip_ratio', 0.0)
     clipping = 1.0 - _clamp(clipped / 0.24)
-    return round(100.0 * (focus * 0.48 + exposure * 0.22 + contrast * 0.15 + clipping * 0.15), 2)
+    # Dealership imagery is an inspection surface, not merely a pleasant hero
+    # shot. Focus therefore dominates while exposure failures still receive a
+    # strong explicit penalty.
+    return round(100.0 * (focus * 0.62 + exposure * 0.13 + contrast * 0.10 + clipping * 0.15), 2)
 
 
 def analyze_image_quality(image_bytes):
@@ -34,12 +37,24 @@ def analyze_image_quality(image_bytes):
 
     height, width = image.shape
     longest_side = max(height, width)
-    if longest_side > 960:
-        scale = 960 / longest_side
+    if longest_side > 1280:
+        scale = 1280 / longest_side
         image = cv2.resize(image, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
 
+    height, width = image.shape
+    centre = image[
+        int(height * 0.14):max(int(height * 0.94), 1),
+        int(width * 0.06):max(int(width * 0.94), 1),
+    ]
+    full_sharpness = float(cv2.Laplacian(image, cv2.CV_64F).var())
+    centre_sharpness = float(cv2.Laplacian(centre, cv2.CV_64F).var())
+
     metrics = {
-        'sharpness': float(cv2.Laplacian(image, cv2.CV_64F).var()),
+        # Central weighting follows the primary vehicle and reduces the chance
+        # that a crisp building or tree wins while the moving car is blurred.
+        'sharpness': centre_sharpness * 0.78 + full_sharpness * 0.22,
+        'centre_sharpness': centre_sharpness,
+        'full_frame_sharpness': full_sharpness,
         'brightness': float(image.mean()),
         'contrast': float(image.std()),
         'black_clip_ratio': float(np.mean(image <= 5)),
@@ -53,7 +68,7 @@ def calculate_sharpness(image_bytes):
     return analyze_image_quality(image_bytes)['sharpness']
 
 
-def _temporal_groups(frame_count, output_count, group_size=7):
+def _temporal_groups(frame_count, output_count, group_size=9):
     groups = []
     bucket_size = frame_count / output_count
 
@@ -157,7 +172,7 @@ def select_optimal_frames(sensor_data, frame_keys, num_frames=36):
                 abs(metric['unwrapped_alpha'] - target_angle),
                 abs(metric['beta'] - median_beta) + abs(metric['gamma'] - median_gamma),
             ),
-        )[:7]
+        )[:9]
         groups.append(candidates)
 
     return groups, median_beta, median_gamma

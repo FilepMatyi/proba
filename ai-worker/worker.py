@@ -25,13 +25,17 @@ from config import (
 from processing.background_removal import remove_background
 from processing.frame_selector import analyze_image_quality, select_optimal_frames
 from processing.quality_report import segmentation_quality_report
+from processing.source_detail import attach_mask_to_source
 from processing.stabilization import (
+    apply_sequence_alignment_plan,
     apply_sequence_roll_plan,
+    apply_vehicle_transform,
     build_sequence_layout,
+    build_vehicle_alignment_plan,
+    combine_scene_and_vehicle_roll,
     estimate_visual_roll,
     level_source_image,
     smooth_roll_measurements,
-    stabilize_vehicle_sequence,
 )
 from processing.studio_compose import create_studio_image
 
@@ -146,12 +150,12 @@ def handle_select_frames(fields):
     for output_offset, group in enumerate(candidate_groups):
         expected_index = (output_offset + 0.5) * frame_count / target_frames - 0.5
         ranked_candidates = {item['index']: {**item, 'rank': rank} for rank, item in enumerate(group)}
-        for index in sorted(range(frame_count), key=lambda item: abs(item - expected_index))[:7]:
+        for index in sorted(range(frame_count), key=lambda item: abs(item - expected_index))[:9]:
             ranked_candidates.setdefault(index, {
                 'index': index,
                 'beta': median_beta,
                 'gamma': median_gamma,
-                'rank': 7,
+                'rank': 9,
             })
 
         remaining_after = target_frames - output_offset - 1
@@ -180,7 +184,7 @@ def handle_select_frames(fields):
                 quality = quality_cache[candidate_index]
                 tilt = abs(candidate.get('beta', median_beta) - median_beta)
                 roll = abs(candidate.get('gamma', median_gamma) - median_gamma)
-                cadence_weight = 0.18 if candidate['rank'] < 7 else 0.7
+                cadence_weight = 0.18 if candidate['rank'] < 9 else 0.7
                 cadence_penalty = min(abs(candidate_index - expected_index) * cadence_weight, 18)
                 score = quality['score'] - (tilt + roll) * 0.35 - cadence_penalty - candidate['rank'] * 0.65
                 if score > best_score:
@@ -254,11 +258,11 @@ def handle_select_frames(fields):
 def handle_bg_removal(fields):
     vehicle_id = fields['vehicleId']
     photo_index = int(fields['photoIndex'])
-    image_bytes = _download_bytes(RAW_BUCKET, fields['candidateKey'])
+    source_bytes = _download_bytes(RAW_BUCKET, fields['candidateKey'])
     roll_correction = float(fields.get('rollCorrection', 0.0))
     # Bound 4K memory before inference, but preserve the unrotated source edge
     # so clipping remains visible to the mask quality checks below.
-    image_bytes = level_source_image(image_bytes, 0.0)
+    image_bytes = level_source_image(source_bytes, 0.0)
 
     if os.getenv('ENABLE_UPSCALE', 'false').lower() == 'true':
         try:
@@ -272,6 +276,7 @@ def handle_bg_removal(fields):
         photo_index=photo_index,
         return_metadata=True,
     )
+    vehicle_image = attach_mask_to_source(source_bytes, vehicle_image)
     bounding_box = vehicle_image.getbbox()
     vehicle_height = bounding_box[3] - bounding_box[1] if bounding_box else vehicle_image.height
     if bounding_box:
@@ -288,7 +293,7 @@ def handle_bg_removal(fields):
     alpha_coverage = sum(alpha_histogram[16:]) / max(vehicle_image.width * vehicle_image.height, 1)
 
     transparent_buffer = io.BytesIO()
-    vehicle_image.save(transparent_buffer, format='PNG', optimize=True)
+    vehicle_image.save(transparent_buffer, format='PNG', compress_level=4)
     transparent_buffer.seek(0)
     transparent_key = f'{vehicle_id}/transparent-{photo_index}.png'
     minio_client.put_object(
@@ -347,31 +352,75 @@ def summarize_mask_quality(vehicle_id):
 
 def normalize_transparent_frames(vehicle_id):
     try:
-        from processing.exposure_normalize import normalize_exposure
+        from processing.exposure_normalize import apply_exposure_plan, build_exposure_plan
 
-        images = {}
+        # Sequence planning only needs geometry and luminance statistics. Keep
+        # compact proxies in memory, then transform one source-resolution frame
+        # at a time so 36 × 4K processing remains safe beside the AI model.
+        planning_images = {}
         for index in range(1, TARGET_FRAMES + 1):
             image_bytes = _download_bytes(RAW_BUCKET, f'{vehicle_id}/transparent-{index}.png')
             with Image.open(io.BytesIO(image_bytes)) as image:
-                images[index] = image.convert('RGBA').copy()
+                planning = image.convert('RGBA')
+                # Give wheel landmark detection the full 960 px budget instead
+                # of spending it on transparent padding around the cutout.
+                planning_bbox = planning.getbbox()
+                if planning_bbox:
+                    planning = planning.crop(planning_bbox)
+                planning.thumbnail((960, 960), Image.Resampling.LANCZOS)
+                planning_images[index] = planning.copy()
 
         raw_rolls = redis_client.hgetall(f'vehicle:{vehicle_id}:rolls')
-        roll_plan = {
+        scene_roll_plan = {
             int(index): float(value)
             for index, value in raw_rolls.items()
         }
-        scene_levelled_images = apply_sequence_roll_plan(images, roll_plan)
-        stabilized_images, vehicle_level_report = stabilize_vehicle_sequence(
-            scene_levelled_images
+        # Scene lines remove genuine camera roll first. Wheel geometry is then
+        # measured only for the small residual around the sequence's natural
+        # three-quarter-view perspective curve.
+        scene_levelled_planning = apply_sequence_roll_plan(
+            planning_images,
+            scene_roll_plan,
         )
-        normalized_images = normalize_exposure(stabilized_images)
-        layout, stabilization_report = build_sequence_layout(normalized_images)
+        vehicle_roll_plan, perspective_warp_plan, vehicle_level_report = build_vehicle_alignment_plan(
+            scene_levelled_planning
+        )
+        combined_roll_plan = combine_scene_and_vehicle_roll(
+            scene_roll_plan,
+            vehicle_roll_plan,
+        )
+        # Rebuild from the untouched proxy: the two corrections are deliberately
+        # combined so the final vehicle is resampled by rotation only once.
+        levelled_planning = apply_sequence_alignment_plan(
+            planning_images,
+            combined_roll_plan,
+            perspective_warp_plan,
+        )
+        exposure_plan = build_exposure_plan(levelled_planning)
+        normalized_planning = {
+            index: apply_exposure_plan(image, exposure_plan.get(index))
+            for index, image in levelled_planning.items()
+        }
+        layout, stabilization_report = build_sequence_layout(normalized_planning)
         stabilization_report.update(vehicle_level_report)
+        stabilization_report.update({
+            'singlePassRotation': True,
+            'sourceResolutionDetail': True,
+            'planningSidePixels': 960,
+        })
         redis_client.delete(f'vehicle:{vehicle_id}:layout')
 
-        for index, image in normalized_images.items():
+        for index in range(1, TARGET_FRAMES + 1):
+            image_bytes = _download_bytes(RAW_BUCKET, f'{vehicle_id}/transparent-{index}.png')
+            with Image.open(io.BytesIO(image_bytes)) as source:
+                image = apply_vehicle_transform(
+                    source.convert('RGBA'),
+                    combined_roll_plan.get(index, 0.0),
+                    perspective_warp_plan.get(index, 0.0),
+                )
+            image = apply_exposure_plan(image, exposure_plan.get(index))
             output = io.BytesIO()
-            image.save(output, format='PNG', optimize=True)
+            image.save(output, format='PNG', compress_level=4)
             output.seek(0)
             minio_client.put_object(
                 RAW_BUCKET,
@@ -427,7 +476,7 @@ def handle_studio(fields):
         target_height_ratio=layout.get('targetHeightRatio'),
     )
     output = io.BytesIO()
-    studio_image.save(output, format='JPEG', quality=94, subsampling=0, optimize=True)
+    studio_image.save(output, format='JPEG', quality=96, subsampling=0, optimize=True)
     output.seek(0)
     minio_client.put_object(
         PROCESSED_BUCKET,
@@ -439,7 +488,14 @@ def handle_studio(fields):
 
     preview_image = studio_image.resize((1280, 720), Image.Resampling.LANCZOS)
     preview_output = io.BytesIO()
-    preview_image.save(preview_output, format='JPEG', quality=86, optimize=True, progressive=True)
+    preview_image.save(
+        preview_output,
+        format='JPEG',
+        quality=91,
+        subsampling=0,
+        optimize=True,
+        progressive=True,
+    )
     preview_output.seek(0)
     minio_client.put_object(
         PROCESSED_BUCKET,

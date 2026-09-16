@@ -14,7 +14,8 @@ function getRecorderOptions() {
     'video/webm',
   ];
   const mimeType = candidates.find((type) => MediaRecorder.isTypeSupported(type));
-  return mimeType ? { mimeType, videoBitsPerSecond: 7_000_000 } : { videoBitsPerSecond: 7_000_000 };
+  const options = { videoBitsPerSecond: 20_000_000 };
+  return mimeType ? { ...options, mimeType } : options;
 }
 
 export default function CameraView({ vehicleId, onVideoRecorded, onCancel }) {
@@ -36,6 +37,7 @@ export default function CameraView({ vehicleId, onVideoRecorded, onCancel }) {
   const [orientation, setOrientation] = useState({ beta: 90, gamma: 0, available: false });
   const [rotationCoverage, setRotationCoverage] = useState(0);
   const [lighting, setLighting] = useState('unknown');
+  const [captureResolution, setCaptureResolution] = useState({ width: 0, height: 0 });
 
   const stopStream = () => {
     streamRef.current?.getTracks().forEach((track) => track.stop());
@@ -51,12 +53,23 @@ export default function CameraView({ vehicleId, onVideoRecorded, onCancel }) {
         audio: false,
         video: {
           facingMode: { ideal: 'environment' },
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
+          width: { ideal: 3840 },
+          height: { ideal: 2160 },
           frameRate: { ideal: 30, max: 30 },
         },
       });
       streamRef.current = mediaStream;
+      const videoTrack = mediaStream.getVideoTracks()[0];
+      const capabilities = videoTrack?.getCapabilities?.() || {};
+      const advanced = {};
+      if (capabilities.focusMode?.includes('continuous')) advanced.focusMode = 'continuous';
+      if (capabilities.exposureMode?.includes('continuous')) advanced.exposureMode = 'continuous';
+      if (capabilities.whiteBalanceMode?.includes('continuous')) advanced.whiteBalanceMode = 'continuous';
+      if (Object.keys(advanced).length) {
+        await videoTrack.applyConstraints({ advanced: [advanced] }).catch(() => {});
+      }
+      const settings = videoTrack?.getSettings?.() || {};
+      setCaptureResolution({ width: settings.width || 0, height: settings.height || 0 });
       if (videoRef.current) videoRef.current.srcObject = mediaStream;
       setCameraState('ready');
     } catch (error) {
@@ -236,6 +249,15 @@ export default function CameraView({ vehicleId, onVideoRecorded, onCancel }) {
       ? 'Túl világos – kerüld a közvetlen ellenfényt'
       : null;
   const captureHealthy = isLevel && !lightingMessage;
+  const resolutionLabel = captureResolution.width >= 3000
+    ? '4K'
+    : captureResolution.height
+      ? `${captureResolution.height}p`
+      : 'HD';
+  const inspectionResolution = captureResolution.width >= 3000;
+  const recordingQualityLabel = canFinish
+    ? (inspectionResolution ? '4K részletesség kész' : 'Elegendő · 4K ajánlott')
+    : `${resolutionLabel} · 36 nézet`;
 
   return (
     <main className="camera-shell">
@@ -289,7 +311,7 @@ export default function CameraView({ vehicleId, onVideoRecorded, onCancel }) {
             </button>
             <div className="record-quality">
               {canFinish ? <Check size={18} /> : <span className="quality-dot" />}
-              <small>{canFinish ? 'Elegendő anyag' : '1080p · 36 nézet'}</small>
+              <small>{recordingQualityLabel}</small>
             </div>
           </>
         )}

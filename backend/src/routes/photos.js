@@ -143,6 +143,8 @@ async function processVideo({ vehicleId, videoPath, sensorData }) {
     }
     if (videoInfo.width * videoInfo.height < 900000) {
       captureWarnings.push('A videó felbontása alacsonyabb az ajánlott 1080p minőségnél.');
+    } else if (videoInfo.width * videoInfo.height < 7000000) {
+      captureWarnings.push('Sérülésvizsgálati nagyításhoz 4K videó ajánlott; ebből a felvételből csak a valóban rögzített részletek őrizhetők meg.');
     }
     if (videoInfo.orientation === 'portrait') {
       captureWarnings.push('Álló tájolású felvétel: tarts nagyobb távolságot, hogy az egész autó minden nézetben a képen maradjon.');
@@ -218,11 +220,12 @@ async function probeVideo(inputPath) {
 async function extractFrames(inputPath, outputDirectory, frameCount, duration) {
   const edgeTrim = Math.min(0.35, duration * 0.015);
   const usableDuration = duration - edgeTrim * 2;
+  const maxCandidateSide = Math.max(1920, Number.parseInt(process.env.MAX_CANDIDATE_SIDE || '3840', 10));
 
   await runProcess('ffmpeg', [
     '-hide_banner', '-loglevel', 'error', '-y', '-i', inputPath,
     '-ss', String(edgeTrim), '-t', String(usableDuration),
-    '-vf', `fps=${frameCount}/${usableDuration},scale=1920:1920:force_original_aspect_ratio=decrease`,
+    '-vf', `fps=${frameCount}/${usableDuration},scale='min(iw,${maxCandidateSide})':'min(ih,${maxCandidateSide})':force_original_aspect_ratio=decrease:force_divisible_by=2`,
     '-frames:v', String(frameCount), '-q:v', '2',
     path.join(outputDirectory, 'frame-%03d.jpg'),
   ]);

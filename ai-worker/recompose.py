@@ -60,25 +60,30 @@ def _upload_image(bucket, object_key, image, image_format, **save_options):
     )
 
 
-def recompose_vehicle(vehicle_id):
+def recompose_vehicle(vehicle_id, compose_only=False):
     images = {
         index: _download_image(f'{vehicle_id}/transparent-{index}.png')
         for index in range(1, TARGET_FRAMES + 1)
     }
-    levelled, vehicle_report = stabilize_vehicle_sequence(images)
-    normalized = normalize_exposure(levelled)
+    if compose_only:
+        normalized = images
+        vehicle_report = {'composeOnly': True}
+    else:
+        levelled, vehicle_report = stabilize_vehicle_sequence(images)
+        normalized = normalize_exposure(levelled)
     layout, layout_report = build_sequence_layout(normalized)
     layout_report.update(vehicle_report)
 
     redis_client.delete(f'vehicle:{vehicle_id}:layout')
     for index, image in normalized.items():
-        _upload_image(
-            RAW_BUCKET,
-            f'{vehicle_id}/transparent-{index}.png',
-            image,
-            'PNG',
-            optimize=True,
-        )
+        if not compose_only:
+            _upload_image(
+                RAW_BUCKET,
+                f'{vehicle_id}/transparent-{index}.png',
+                image,
+                'PNG',
+                optimize=True,
+            )
         redis_client.hset(
             f'vehicle:{vehicle_id}:layout',
             str(index),
@@ -94,7 +99,7 @@ def recompose_vehicle(vehicle_id):
             f'{vehicle_id}/processed-{index}.jpg',
             studio,
             'JPEG',
-            quality=94,
+            quality=96,
             subsampling=0,
             optimize=True,
         )
@@ -104,19 +109,21 @@ def recompose_vehicle(vehicle_id):
             f'{vehicle_id}/preview-{index}.jpg',
             preview,
             'JPEG',
-            quality=86,
+            quality=91,
+            subsampling=0,
             optimize=True,
             progressive=True,
         )
 
     redis_client.expire(f'vehicle:{vehicle_id}:layout', 24 * 60 * 60)
-    response = requests.post(
-        f'{BACKEND_URL}/internal/vehicles/{vehicle_id}/quality',
-        json={'metrics': {'stabilization': layout_report}, 'warnings': []},
-        headers={'x-internal-token': INTERNAL_API_TOKEN},
-        timeout=15,
-    )
-    response.raise_for_status()
+    if not compose_only:
+        response = requests.post(
+            f'{BACKEND_URL}/internal/vehicles/{vehicle_id}/quality',
+            json={'metrics': {'stabilization': layout_report}, 'warnings': []},
+            headers={'x-internal-token': INTERNAL_API_TOKEN},
+            timeout=15,
+        )
+        response.raise_for_status()
     return layout_report
 
 
@@ -124,11 +131,16 @@ def main():
     parser = argparse.ArgumentParser(
         description='Restabilize existing transparent frames and rebuild viewer assets.'
     )
+    parser.add_argument(
+        '--compose-only',
+        action='store_true',
+        help='Rebuild studio JPEGs without rotating or overwriting transparent frames.',
+    )
     parser.add_argument('vehicle_ids', nargs='+')
     args = parser.parse_args()
 
     for vehicle_id in args.vehicle_ids:
-        report = recompose_vehicle(vehicle_id)
+        report = recompose_vehicle(vehicle_id, compose_only=args.compose_only)
         print(json.dumps({'vehicleId': vehicle_id, **report}, ensure_ascii=False))
 
 
