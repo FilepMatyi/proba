@@ -172,6 +172,10 @@ function renderViewer({
     .controls{position:absolute;z-index:10;top:15px;right:15px;display:grid;gap:7px}.controls button{width:38px;height:38px;display:grid;place-items:center;border:1px solid rgba(0,0,0,.08);border-radius:11px;color:#242a26;background:rgba(255,255,255,.76);backdrop-filter:blur(10px);cursor:pointer;font-size:15px;font-weight:750;transition:transform .16s,background .16s}.controls button:disabled{opacity:.3;cursor:default}.controls button[aria-pressed="true"]{color:#11170a;background:var(--accent)}
     .timeline{position:absolute;z-index:9;left:50%;bottom:17px;transform:translateX(-50%);width:min(66%,520px);height:28px;display:flex;align-items:center;padding:0 11px;background:rgba(255,255,255,.7);border:1px solid rgba(0,0,0,.08);border-radius:999px;backdrop-filter:blur(10px)}.timeline input{width:100%;height:3px;margin:0;accent-color:#28322c;cursor:ew-resize}.toast{position:absolute;z-index:12;top:16px;left:50%;transform:translate(-50%,-12px);padding:9px 12px;color:#202621;background:rgba(255,255,255,.9);border-radius:999px;box-shadow:0 8px 30px rgba(0,0,0,.12);font-size:10px;font-weight:750;opacity:0;pointer-events:none;transition:.2s}.toast.visible{opacity:1;transform:translate(-50%,0)}
     footer{height:62px;padding-top:17px;display:flex;align-items:flex-end;justify-content:space-between;gap:18px;color:var(--muted);font-size:10px}.vehicle{min-width:0;display:grid;gap:3px}.vehicle small{font-size:8px;font-weight:750;letter-spacing:.12em;text-transform:uppercase}.vehicle strong{overflow:hidden;text-overflow:ellipsis;color:#dfe4e1;font-size:12px;letter-spacing:.02em}.counter{font-variant-numeric:tabular-nums;font-weight:750}.counter b{color:var(--accent);font-weight:800}.quality{display:flex;align-items:center;gap:7px}.quality span{width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 9px var(--accent)}.quality.review{color:#e8b75d}.quality.review span{background:#e8b75d;box-shadow:0 0 9px #e8b75d}
+    /* Keep only the visible image painted; pan/zoom the shared layer. */
+    .frame{overflow:visible;transform-origin:center;will-change:transform}
+    .frame img{display:none;will-change:auto;opacity:1}
+    .frame img.active{display:block}
     @keyframes spin{to{transform:rotate(360deg)}}
     @media(hover:hover){.controls button:hover:not(:disabled){transform:translateY(-1px);background:white}}
     @media(max-width:600px){.shell{padding:12px}.stage{border-radius:18px}header{height:52px}.badge{display:none}.hint{bottom:54px}.controls{top:10px;right:10px}.controls button{width:36px;height:36px}.timeline{bottom:13px;width:74%}footer{height:55px}.quality{display:none}}
@@ -228,30 +232,70 @@ function renderViewer({
       const images=[];
       const loaded=new Set();
       const pointers=new Map();
-      let index=0,desiredIndex=0,rotation=0,zoom=1,panX=0,panY=0,velocity=0;
+      let index=0,activeIndex=-1,desiredIndex=0,rotation=0,zoom=1,panX=0,panY=0,velocity=0;
       let lastX=0,lastY=0,pinchDistance=0,autoplay=!reducedMotion,lastFrame=performance.now(),toastTimer;
+      let transformDirty=true,rotationDirty=false,lastMoveTime=0,hdTimer;
+      const hdPending=new Set(),hdFailed=new Set();
+      let hdWanted=new Set();
 
       function flash(message){window.clearTimeout(toastTimer);toast.textContent=message;toast.classList.add('visible');toastTimer=window.setTimeout(()=>toast.classList.remove('visible'),1800)}
       function setAutoplay(next){autoplay=Boolean(next)&&!reducedMotion;playButton.textContent=autoplay?'Ⅱ':'▶';playButton.setAttribute('aria-pressed',String(autoplay))}
-      function interact(){setAutoplay(false);hint.classList.add('hidden')}
+      function interact(){setAutoplay(false);velocity=0;hint.classList.add('hidden')}
       function normalize(next){return ((next%sources.length)+sources.length)%sources.length}
       function clampPan(){const maxX=stage.clientWidth*(zoom-1)/2,maxY=stage.clientHeight*(zoom-1)/2;panX=Math.max(-maxX,Math.min(maxX,panX));panY=Math.max(-maxY,Math.min(maxY,panY))}
-      function applyTransform(){clampPan();images.forEach(img=>{img.style.transform='translate('+panX+'px,'+panY+'px) scale('+zoom+')'})}
-      function upgrade(position){if(!sources[position]||images[position].dataset.hd==='true')return;const high=new Image();high.onload=()=>{images[position].src=sources[position].hd;images[position].dataset.hd='true'};high.src=sources[position].hd}
+      // One composited layer, updated at most once per animation frame.
+      function applyTransform(){transformDirty=true}
+      function paintTransform(){clampPan();frame.style.transform='translate('+panX+'px,'+panY+'px) scale('+zoom+')';transformDirty=false}
+      function pumpHD(){
+        for(const position of hdWanted){
+          if(hdPending.size>=2)break;
+          if(hdPending.has(position)||hdFailed.has(position)||images[position].dataset.hd==='true')continue;
+          hdPending.add(position);
+          const high=new Image();high.decoding='async';
+          high.onload=async()=>{
+            try{
+              if(high.decode)await high.decode();
+              if(hdWanted.has(position)){
+                // Set the state BEFORE src: a cached load can fire immediately.
+                images[position].dataset.hd='true';images[position].src=sources[position].hd;
+              }
+            }catch{hdFailed.add(position)}
+            finally{hdPending.delete(position);pumpHD()}
+          };
+          high.onerror=()=>{hdFailed.add(position);hdPending.delete(position);pumpHD()};
+          high.src=sources[position].hd;
+        }
+      }
+      function scheduleHD(){
+        window.clearTimeout(hdTimer);
+        // Do not download/decode every intermediate HD frame during a fast spin.
+        hdWanted=new Set();
+        hdTimer=window.setTimeout(()=>{
+          hdWanted=new Set([index,normalize(index-1),normalize(index+1)]);
+          images.forEach((img,i)=>{
+            if(img.dataset.hd==='true'&&img.dataset.fallback!=='true'&&!hdWanted.has(i)){
+              img.dataset.hd='false';img.src=sources[i].preview;
+            }
+          });
+          pumpHD();
+        },120);
+      }
       function show(next){
         if(!sources.length)return;
         desiredIndex=normalize(next);
         if(!loaded.has(desiredIndex)){loadPreview(desiredIndex);return}
         index=desiredIndex;
-        images.forEach((img,i)=>img.classList.toggle('active',i===index));
+        if(activeIndex===index)return;
+        if(activeIndex>=0)images[activeIndex].classList.remove('active');
+        images[index].classList.add('active');activeIndex=index;
         current.textContent=String(index+1).padStart(2,'0');scrubber.value=String(index);
-        upgrade(index);upgrade(normalize(index-1));upgrade(normalize(index+1));
+        scheduleHD();
       }
       function markLoaded(position){if(loaded.has(position))return;loaded.add(position);loadingText.textContent=loaded.size+' / '+sources.length+' gyorsnézet';if(loaded.size===1){show(desiredIndex);loading.classList.add('hidden')}if(loaded.size===sources.length)loading.classList.add('hidden')}
       function loadPreview(position){
         const img=images[position];if(!img||img.dataset.started==='true')return;img.dataset.started='true';
         img.onload=()=>{markLoaded(position);if(position===desiredIndex)show(position)};
-        img.onerror=()=>{if(img.dataset.fallback!=='true'){img.dataset.fallback='true';img.dataset.hd='true';img.src=sources[position].hd}else markLoaded(position)};
+        img.onerror=()=>{if(img.dataset.fallback!=='true'){img.dataset.fallback='true';img.dataset.hd='true';img.src=sources[position].hd}else{img.dataset.failed='true';if(position===desiredIndex){loading.classList.add('hidden');flash('Ez a nézet nem tölthető be. Válassz másik nézetet.')}}};
         img.src=sources[position].preview;
       }
       function loadImages(){
@@ -260,7 +304,15 @@ function renderViewer({
         const loadRest=()=>sources.forEach((_,i)=>window.setTimeout(()=>loadPreview(i),i*18));
         if('requestIdleCallback' in window)window.requestIdleCallback(loadRest,{timeout:700});else window.setTimeout(loadRest,120);
       }
-      function setZoom(next){zoom=Math.max(1,Math.min(4,next));if(zoom===1){panX=0;panY=0}zoomOut.disabled=zoom===1;applyTransform()}
+      function setZoom(next,clientX,clientY){
+        const previous=zoom;zoom=Math.max(1,Math.min(4,next));
+        if(Number.isFinite(clientX)&&Number.isFinite(clientY)){
+          const rect=stage.getBoundingClientRect(),x=clientX-rect.left-rect.width/2,y=clientY-rect.top-rect.height/2;
+          panX=x-(x-panX)*zoom/previous;panY=y-(y-panY)*zoom/previous;
+        }
+        if(zoom===1){panX=0;panY=0}
+        zoomOut.disabled=zoom===1;zoomIn.disabled=zoom===4;applyTransform();
+      }
       function resetView(){interact();rotation=index;setZoom(1);show(index);flash('Nézet visszaállítva')}
       function pointerDistance(){const values=[...pointers.values()];return values.length<2?0:Math.hypot(values[0].x-values[1].x,values[0].y-values[1].y)}
 
@@ -270,19 +322,23 @@ function renderViewer({
         return;
       }
 
-      stage.addEventListener('pointerdown',event=>{if(event.target.closest('button,input'))return;pointers.set(event.pointerId,{x:event.clientX,y:event.clientY});stage.setPointerCapture(event.pointerId);lastX=event.clientX;lastY=event.clientY;velocity=0;stage.classList.add('grabbing');interact();if(pointers.size===2)pinchDistance=pointerDistance()});
+      stage.addEventListener('pointerdown',event=>{if(event.target.closest('button,input')||(event.button!==undefined&&event.button!==0))return;pointers.set(event.pointerId,{x:event.clientX,y:event.clientY});stage.setPointerCapture(event.pointerId);lastX=event.clientX;lastY=event.clientY;lastMoveTime=performance.now();stage.classList.add('grabbing');interact();if(pointers.size===2)pinchDistance=pointerDistance()});
       stage.addEventListener('pointermove',event=>{
         if(!pointers.has(event.pointerId))return;
         pointers.set(event.pointerId,{x:event.clientX,y:event.clientY});
-        if(pointers.size>=2){const distance=pointerDistance();if(pinchDistance>0)setZoom(zoom*distance/pinchDistance);pinchDistance=distance;return}
+        if(pointers.size>=2){const distance=pointerDistance(),points=[...pointers.values()];if(pinchDistance>0)setZoom(zoom*distance/pinchDistance,(points[0].x+points[1].x)/2,(points[0].y+points[1].y)/2);pinchDistance=distance;return}
         const dx=event.clientX-lastX,dy=event.clientY-lastY;
-        if(zoom===1){rotation+=dx/16;velocity=dx/16;show(Math.round(rotation))}else{panX+=dx;panY+=dy;applyTransform()}
-        lastX=event.clientX;lastY=event.clientY;
+        const now=performance.now();
+        if(zoom===1){rotation+=dx/16;velocity=Math.max(-.08,Math.min(.08,dx/16/Math.max(8,now-lastMoveTime)));rotationDirty=true}else{panX+=dx;panY+=dy;applyTransform()}
+        lastX=event.clientX;lastY=event.clientY;lastMoveTime=now;
       });
-      function release(event){pointers.delete(event.pointerId);if(pointers.size<2)pinchDistance=0;if(!pointers.size)stage.classList.remove('grabbing');else{const point=[...pointers.values()][0];lastX=point.x;lastY=point.y}}
-      stage.addEventListener('pointerup',release);stage.addEventListener('pointercancel',release);
-      stage.addEventListener('wheel',event=>{event.preventDefault();interact();setZoom(zoom+(event.deltaY<0?.25:-.25))},{passive:false});
-      stage.addEventListener('dblclick',()=>{interact();setZoom(zoom>1?1:2)});
+      function release(event){if(!pointers.delete(event.pointerId))return;if(event.type!=='pointerup'||performance.now()-lastMoveTime>90)velocity=0;if(pointers.size<2)pinchDistance=0;if(!pointers.size)stage.classList.remove('grabbing');else{const point=[...pointers.values()][0];lastX=point.x;lastY=point.y;lastMoveTime=performance.now()}}
+      function cancelGesture(){pointers.clear();pinchDistance=0;velocity=0;stage.classList.remove('grabbing')}
+      stage.addEventListener('pointerup',release);stage.addEventListener('pointercancel',release);stage.addEventListener('lostpointercapture',release);
+      window.addEventListener('blur',cancelGesture);
+      document.addEventListener('visibilitychange',()=>{if(document.visibilityState!=='visible')cancelGesture();lastFrame=performance.now()});
+      stage.addEventListener('wheel',event=>{event.preventDefault();interact();setZoom(zoom+(event.deltaY<0?.25:-.25),event.clientX,event.clientY)},{passive:false});
+      stage.addEventListener('dblclick',event=>{interact();setZoom(zoom>1?1:2,event.clientX,event.clientY)});
       stage.addEventListener('keydown',event=>{
         if(event.target===scrubber)return;
         if(event.key==='ArrowRight'||event.key==='ArrowLeft'){event.preventDefault();interact();rotation+=event.key==='ArrowRight'?1:-1;show(Math.round(rotation))}
@@ -298,7 +354,7 @@ function renderViewer({
       shareButton.addEventListener('click',async()=>{try{if(navigator.share)await navigator.share({title:document.title,url:location.href});else{await navigator.clipboard.writeText(location.href);flash('Link a vágólapra másolva')}}catch(error){if(error.name!=='AbortError')flash('A megosztás nem sikerült')}});
       fullscreen.addEventListener('click',()=>{if(document.fullscreenElement)document.exitFullscreen();else stage.requestFullscreen?.()});
       window.addEventListener('resize',applyTransform);
-      function animate(now){const dt=Math.min(now-lastFrame,40);lastFrame=now;if(!pointers.size&&zoom===1&&document.visibilityState==='visible'){if(autoplay&&loaded.size>=5)velocity=.00075*dt;else velocity*=.91;if(Math.abs(velocity)>.002){rotation+=velocity;show(Math.round(rotation))}}requestAnimationFrame(animate)}
+      function animate(now){const dt=Math.max(0,Math.min(now-lastFrame,40));lastFrame=now;if(!pointers.size&&zoom===1&&document.visibilityState==='visible'){if(autoplay&&loaded.size>=5){rotation+=.00075*dt;rotationDirty=true}else if(Math.abs(velocity)>.00012){const decay=Math.exp(-dt/175);rotation+=velocity*175*(1-decay);velocity*=decay;rotationDirty=true}}if(rotationDirty){rotationDirty=false;show(Math.round(rotation))}if(transformDirty)paintTransform();requestAnimationFrame(animate)}
       if(sources.length<${config.processing.targetFrames}){const completionPoll=window.setInterval(async()=>{try{const response=await fetch('/api/sessions/${vehicleId}',{cache:'no-store'});if(response.ok&&(await response.json()).status==='completed'){window.clearInterval(completionPoll);location.reload()}}catch{}},7000)}
       loadImages();setAutoplay(autoplay);requestAnimationFrame(animate);window.setTimeout(()=>hint.classList.add('hidden'),5500);
     })();

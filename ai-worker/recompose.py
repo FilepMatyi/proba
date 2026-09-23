@@ -24,7 +24,7 @@ from config import (
 )
 from processing.exposure_normalize import normalize_exposure
 from processing.stabilization import build_sequence_layout, stabilize_vehicle_sequence
-from processing.studio_compose import create_studio_image
+from processing.studio_compose import create_studio_image, build_grounding_layout
 
 
 minio_client = Minio(
@@ -60,9 +60,10 @@ def _upload_image(bucket, object_key, image, image_format, **save_options):
     )
 
 
-def recompose_vehicle(vehicle_id, compose_only=False):
+def recompose_vehicle(vehicle_id, compose_only=False, source_vehicle=None):
+    source_vehicle = source_vehicle or vehicle_id
     images = {
-        index: _download_image(f'{vehicle_id}/transparent-{index}.png')
+        index: _download_image(f'{source_vehicle}/transparent-{index}.png')
         for index in range(1, TARGET_FRAMES + 1)
     }
     if compose_only:
@@ -73,10 +74,11 @@ def recompose_vehicle(vehicle_id, compose_only=False):
         normalized = normalize_exposure(levelled)
     layout, layout_report = build_sequence_layout(normalized)
     layout_report.update(vehicle_report)
+    layout_report.update(build_grounding_layout(normalized, layout))
 
     redis_client.delete(f'vehicle:{vehicle_id}:layout')
     for index, image in normalized.items():
-        if not compose_only:
+        if not compose_only or source_vehicle != vehicle_id:
             _upload_image(
                 RAW_BUCKET,
                 f'{vehicle_id}/transparent-{index}.png',
@@ -93,6 +95,8 @@ def recompose_vehicle(vehicle_id, compose_only=False):
         studio = create_studio_image(
             image,
             target_height_ratio=layout[index]['targetHeightRatio'],
+            platform_depth_ratio=layout[index]['platformDepthRatio'],
+            grounding_scale=layout[index]['groundingScale'],
         )
         _upload_image(
             PROCESSED_BUCKET,
@@ -114,6 +118,7 @@ def recompose_vehicle(vehicle_id, compose_only=False):
             optimize=True,
             progressive=True,
         )
+        print(f'[{vehicle_id}] Composed {index}/{TARGET_FRAMES}', flush=True)
 
     redis_client.expire(f'vehicle:{vehicle_id}:layout', 24 * 60 * 60)
     if not compose_only:
@@ -137,10 +142,11 @@ def main():
         help='Rebuild studio JPEGs without rotating or overwriting transparent frames.',
     )
     parser.add_argument('vehicle_ids', nargs='+')
+    parser.add_argument('--source-vehicle', help='Read source masks from another session; preserve those originals.')
     args = parser.parse_args()
 
     for vehicle_id in args.vehicle_ids:
-        report = recompose_vehicle(vehicle_id, compose_only=args.compose_only)
+        report = recompose_vehicle(vehicle_id, compose_only=args.compose_only, source_vehicle=args.source_vehicle)
         print(json.dumps({'vehicleId': vehicle_id, **report}, ensure_ascii=False))
 
 

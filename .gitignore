@@ -42,3 +42,6 @@ redis_data/
 prisma/migrations/  # Using db push instead of migrations for MVP
 
 *.mp4
+
+# Local, reproducible image-processing diagnostics
+ai-worker/diagnostics/

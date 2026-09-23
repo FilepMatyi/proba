@@ -18,10 +18,47 @@ from processing.studio_compose import (
     _make_local_contact_shadow,
     _platform_geometry,
     _platform_vertical_bounds,
+    build_grounding_layout,
 )
+from processing.ground_contacts import silhouette_contacts, tire_contacts
 
 
 class StudioComposeTests(unittest.TestCase):
+    def test_two_foreshortened_wheels_in_same_half_are_not_lost(self):
+        image = Image.new('RGBA', (960, 670))
+        draw = ImageDraw.Draw(image)
+        draw.polygon(((10, 180), (850, 80), (945, 520), (520, 605), (110, 385)), fill=(50, 95, 65))
+        for x, y, rx, ry in ((60, 328, 38, 82), (425, 539, 86, 128)):
+            draw.ellipse((x-rx, y-ry, x+rx, y+ry), fill=(20, 20, 20))
+            draw.ellipse((x-rx*.6, y-ry*.65, x+rx*.6, y+ry*.65), outline=(175, 175, 175), width=5)
+            for offset in (-.4, 0, .4):
+                draw.line((x-rx*.5, y+offset*ry, x+rx*.5, y+offset*ry), fill=(165, 165, 165), width=4)
+        points = silhouette_contacts(np.asarray(image.getchannel('A')))
+        self.assertEqual(len(points), 2)
+        self.assertLess(points[1]['x'], image.width/2)
+        self.assertAlmostEqual(points[0]['y'], 410, delta=3)
+        self.assertAlmostEqual(points[1]['y'], 667, delta=3)
+
+    def test_deep_perspective_contacts_fit_surface_without_deforming_vehicle(self):
+        platform = _platform_geometry(3200, 1800)
+        contacts = [{'x': 100., 'y': 430.}, {'x': 740., 'y': 860.}]
+        _, anchors = _fit_contacts_to_platform(contacts, 600, platform, 860)
+        self.assertEqual(anchors[1]['canvasY']-anchors[0]['canvasY'], 430)
+        for anchor in anchors:
+            back, front = _platform_vertical_bounds(platform, anchor['canvasX'])
+            self.assertGreaterEqual(anchor['canvasY'], back-1)
+            self.assertLessEqual(anchor['canvasY'], front+1)
+
+    def test_grounding_layout_has_one_depth_and_scale_for_entire_orbit(self):
+        images = {i: Image.new('RGBA', (700, 400), (30, 30, 30, 255)) for i in range(1, 5)}
+        layout = {i: {'targetHeightRatio': 1.} for i in images}
+        points = [{'x': 100., 'y': 180., 'radius': 40.}, {'x': 520., 'y': 390., 'radius': 60.}]
+        with patch('processing.studio_compose._build_ground_contacts', return_value=points):
+            report = build_grounding_layout(images, layout)
+        self.assertGreater(report['platformDepthRatio'], .12)
+        self.assertEqual(len({item['platformDepthRatio'] for item in layout.values()}), 1)
+        self.assertEqual(len({item['groundingScale'] for item in layout.values()}), 1)
+
     def test_contact_plane_is_inside_platform_top_surface(self):
         geometry = _platform_geometry(2400, 1350)
 

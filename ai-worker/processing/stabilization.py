@@ -5,11 +5,12 @@ import os
 import cv2
 import numpy as np
 from PIL import Image, ImageOps
+from processing.ground_contacts import tire_contacts, silhouette_contacts
 
 
 MAX_ROLL_CORRECTION = float(os.getenv('MAX_ROLL_CORRECTION', '3.5'))
 MAX_VEHICLE_ROLL_CORRECTION = float(os.getenv('MAX_VEHICLE_ROLL_CORRECTION', '2.5'))
-MAX_PERSPECTIVE_WARP = float(os.getenv('MAX_PERSPECTIVE_WARP', '0.9'))
+MAX_PERSPECTIVE_WARP = float(os.getenv('MAX_PERSPECTIVE_WARP', '0.3'))
 TARGET_CONTACT_ANGLE_DEGREES = float(os.getenv('TARGET_CONTACT_ANGLE_DEGREES', '1.0'))
 MIN_WHEEL_PAIR_ASPECT_RATIO = float(os.getenv('MIN_WHEEL_PAIR_ASPECT_RATIO', '1.0'))
 MAX_PROCESSING_SIDE = max(960, int(os.getenv('MAX_PROCESSING_SIDE', '1920')))
@@ -433,6 +434,27 @@ def _estimate_wheel_contact_roll(
         }
 
     scale = min(1.0, 960.0 / max(width, height))
+    # Silhouette-supported tire anchors also cover elliptical far wheels. A
+    # dark circular bumper must not displace a clearly visible tire footprint.
+    footprints = tire_contacts(Image.fromarray(crop, 'RGBA'))
+    if len(footprints) == 2:
+        left, right = footprints
+        dx, dy = right['x'] - left['x'], right['y'] - left['y']
+        # In narrow rear views, a middle-of-bumper hitch is not a second
+        # tire. Near-level pairs must bracket the body; genuine three-quarter
+        # pairs may share one half, but then exhibit clear depth separation.
+        plausible_pair = (aspect_ratio >= 1.65 or abs(dy) >= height*.14
+                          or (left['x'] <= width*.18 and right['x'] >= width*.82))
+        if dx >= width * .20 and plausible_pair:
+            return {
+                'angle': round(math.degrees(math.atan2(dy, dx)), 4),
+                'confidence': min(item['confidence'] for item in footprints),
+                'contactDelta': round(dy, 2), 'method': 'wheels',
+                'anchorMethod': 'tire-silhouette', 'aspectRatio': round(aspect_ratio, 4),
+                'wheelContacts': [(x0+item['x'], y0+item['y']) for item in footprints],
+                'wheelCenters': [(x0+item['x'], y0+item['y']-item['radius']) for item in footprints],
+                'wheelRadii': [item['radius'] for item in footprints],
+            }
     if scale < 1.0:
         work_w = max(1, int(round(width * scale)))
         work_h = max(1, int(round(height * scale)))
@@ -497,6 +519,7 @@ def _estimate_wheel_contact_roll(
             return None
         return float(np.percentile(bottoms, 96))
 
+    contour_contacts = silhouette_contacts(work_alpha, limit=5)
     candidates = []
     yy, xx = np.ogrid[:work_h, :work_w]
     full_gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
@@ -568,9 +591,16 @@ def _estimate_wheel_contact_roll(
         # A real tire contact lies roughly one detected radius below its
         # centre. This rejects circles found in bumpers, grilles and lights,
         # whose local silhouette bottom is much farther away.
-        if not (radius * 0.68 <= contact_depth <= radius * 2.8):
+        if not (radius * 0.68 <= contact_depth <= radius * 1.85):
             continue
-        if contact < work_h * 0.71:
+        if contact < work_h * 0.52:
+            continue
+
+        # Circular appearance is insufficient: require a protruding lower
+        # contour in the same position, excluding flat bumper/grille circles.
+        if not any(abs(item['x']-cx) < max(radius*.65, work_w*.025)
+                   and abs(item['y']-contact) < work_h*.025
+                   for item in contour_contacts):
             continue
 
         # Prefer the outer tire circle over smaller rim circles returned for
@@ -590,6 +620,7 @@ def _estimate_wheel_contact_roll(
             'y': cy,
             'radius': radius,
             'contact': contact,
+            'contactDepthRatio': contact_depth / max(radius, 1.0),
             'score': score,
             'neutralDark': neutral_dark,
             'edgeDensity': edge_density,
@@ -623,6 +654,9 @@ def _estimate_wheel_contact_roll(
         for second in candidates[left_index + 1:]:
             left, right = sorted((first, second), key=lambda item: item['x'])
             separation = right['x'] - left['x']
+            if (aspect_ratio < 1.65 and abs(right['contact']-left['contact']) < work_h*.14
+                    and not (left['x'] <= work_w*.18 and right['x'] >= work_w*.82)):
+                continue
             if separation < work_w * 0.36:
                 continue
             if left['x'] > work_w * 0.58 or right['x'] < work_w * 0.42:
@@ -997,11 +1031,15 @@ def build_vehicle_alignment_plan(images):
         contacts = measurement.get('wheelContacts') or []
         if index in reliable_indexes and len(contacts) == 2:
             left, right = sorted(contacts, key=lambda point: point[0])
+            # Solve in the SAME rotated coordinates used by the renderer.
+            # Clipped angles and unrotated X positions underestimate strong
+            # three-quarter contact differences and can even reverse a warp.
+            left, right = _transform_contact_pair(left, right, (image_width, image_height), corrections[index], 0.0)
             dx = float(right[0] - left[0])
-            observed_dy = math.tan(math.radians(source_angle)) * dx
+            observed_dy = float(right[1] - left[1])
             target_dy = math.tan(math.radians(target_angle)) * dx
             anchor_y = image_height * 0.28
-            center_x = image_width / 2.0
+            center_x = (image_width - 1) / 2.0
             denominator = (
                 (float(right[1]) - anchor_y)
                 * ((float(right[0]) - center_x) / max(image_width, 1))
@@ -1035,6 +1073,20 @@ def build_vehicle_alignment_plan(images):
         index: float(value) if perspective_available else 0.0
         for index, value in zip(indexes, smoothed_warps)
     }
+    rejected_warps = 0
+    for index, measurement in zip(indexes, measurements):
+        contacts = measurement.get('wheelContacts') or []
+        if len(contacts) != 2:
+            continue
+        left, right = contacts
+        baseline = _transform_contact_pair(left, right, measurement_images[index].size, corrections[index], 0.)
+        proposed = _transform_contact_pair(left, right, measurement_images[index].size,
+                                           corrections[index], perspective_warps[index])
+        # Smoothing across a front/rear transition can change a warp's sign.
+        # Never worsen a directly measured pair just to follow that neighbour.
+        if abs(proposed[1][1]-proposed[0][1]) > abs(baseline[1][1]-baseline[0][1]) + .5:
+            perspective_warps[index] = 0.
+            rejected_warps += 1
     residual_before = [
         abs(float(item.get('angle', 0.0)))
         for index, item in zip(indexes, residual_measurements)
@@ -1060,8 +1112,6 @@ def build_vehicle_alignment_plan(images):
                 perspective_warps[index],
             )
             contact_deltas_after.append(abs(transformed[1][1] - transformed[0][1]))
-        elif abs(float(measurement.get('contactDelta', 0.0))) > 0.0:
-            contact_deltas_before.append(abs(float(measurement['contactDelta'])))
     initially_unmeasurable = set(indexes) - reliable_indexes
     report = {
         'vehicleLeveling': True,
@@ -1092,6 +1142,10 @@ def build_vehicle_alignment_plan(images):
         'maximumPerspectiveWarp': round(
             max((abs(value) for value in perspective_warps.values()), default=0.0), 4
         ),
+        'perspectiveLimitedFrames': sum(abs(value) >= MAX_PERSPECTIVE_WARP-.01 for value in perspective_warps.values()),
+        'contactDeltaIsProjection': True,
+        'contactDeltaSampleCount': len(contact_deltas_before),
+        'nonImprovingWarpsRejected': rejected_warps,
         'vehicleLevelingPasses': 1,
         'contactDeltaBefore': round(
             float(np.median(contact_deltas_before)) if contact_deltas_before else 0.0,

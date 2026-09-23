@@ -178,6 +178,31 @@ class StabilizationTests(unittest.TestCase):
         self.assertGreater(estimate['angle'], 3.0)
         self.assertLess(estimate['angle'], 8.0)
 
+    def test_edge_wheel_candidate_survives_hough_padding(self):
+        image = Image.new('RGBA', (600, 360), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(image)
+        # Faint alpha corners must NOT change opaque measurement coordinates.
+        draw.point((0, 0), fill=(0, 0, 0, 1))
+        draw.point((599, 359), fill=(0, 0, 0, 1))
+        draw.rectangle((25, 105, 525, 245), fill=(45, 90, 60, 255))
+        draw.ellipse((0, 215, 110, 325), fill=(24, 24, 24, 255))
+        draw.ellipse((265, 215, 375, 325), fill=(24, 24, 24, 255))
+        for center_x in (55, 320):
+            draw.ellipse((center_x - 30, 270 - 30, center_x + 30, 270 + 30), fill=(160, 160, 160, 255))
+            draw.line((center_x - 28, 270, center_x + 28, 270), fill=(20, 20, 20, 255), width=5)
+            draw.line((center_x, 242, center_x, 298), fill=(20, 20, 20, 255), width=5)
+
+        # Opaque crop is y=105..325 (221 px): padding 45, lower_top 93.
+        circles = np.asarray([[[100.0, 72.0, 45.0], [365.0, 72.0, 45.0]]], dtype=np.float32)
+        with patch('processing.stabilization.tire_contacts', return_value=[]), \
+             patch('processing.stabilization.cv2.HoughCircles', return_value=circles):
+            estimate = _estimate_wheel_contact_roll(image)
+
+        self.assertEqual(estimate['method'], 'wheels')
+        self.assertGreaterEqual(estimate['confidence'], 0.2)
+        self.assertLess(estimate['wheelCenters'][0][0], 90)
+        self.assertGreater(estimate['wheelCenters'][1][0], 280)
+
     def test_wheel_contact_slope_is_measurement_not_direct_rotation(self):
         vehicle = self._vehicle_mask(270, 330)
         estimate = estimate_vehicle_roll(vehicle)
@@ -185,6 +210,17 @@ class StabilizationTests(unittest.TestCase):
         self.assertIn(estimate['method'], ('wheels', 'silhouette'))
         self.assertGreater(abs(estimate['contactDelta']), 35.0)
         self.assertGreater(abs(estimate['angle']), 3.0)
+
+    def test_narrow_rear_hitch_pair_is_not_used_as_a_ground_plane(self):
+        image = Image.new('RGBA', (960, 720), (30, 70, 40, 255))
+        footprints = [
+            {'x': 190., 'y': 715., 'radius': 90., 'confidence': .6},
+            {'x': 650., 'y': 710., 'radius': 40., 'confidence': .6},
+        ]
+        with patch('processing.stabilization.tire_contacts', return_value=footprints), \
+             patch('processing.stabilization.cv2.HoughCircles', return_value=None):
+            result = _estimate_wheel_contact_roll(image)
+        self.assertEqual(result['confidence'], 0.)
 
     def test_orbit_fit_interpolates_ambiguous_front_and_rear_views(self):
         measurements = []

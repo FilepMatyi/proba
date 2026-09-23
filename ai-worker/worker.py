@@ -37,7 +37,7 @@ from processing.stabilization import (
     level_source_image,
     smooth_roll_measurements,
 )
-from processing.studio_compose import create_studio_image
+from processing.studio_compose import create_studio_image, build_grounding_layout
 
 
 STREAM_NAME = 'photo-processing-stream'
@@ -403,6 +403,7 @@ def normalize_transparent_frames(vehicle_id):
         }
         layout, stabilization_report = build_sequence_layout(normalized_planning)
         stabilization_report.update(vehicle_level_report)
+        stabilization_report.update(build_grounding_layout(normalized_planning, layout))
         stabilization_report.update({
             'singlePassRotation': True,
             'sourceResolutionDetail': True,
@@ -474,6 +475,8 @@ def handle_studio(fields):
         vehicle_image,
         global_max_h=reference_height,
         target_height_ratio=layout.get('targetHeightRatio'),
+        platform_depth_ratio=layout.get('platformDepthRatio'),
+        grounding_scale=layout.get('groundingScale', 1.0),
     )
     output = io.BytesIO()
     studio_image.save(output, format='JPEG', quality=96, subsampling=0, optimize=True)

@@ -6,6 +6,7 @@ import os
 from functools import lru_cache
 
 from processing.stabilization import estimate_wheel_contacts
+from processing.ground_contacts import silhouette_contacts, tire_contacts
 
 # ─── Canvas constants ────────────────────────────────────────────────
 # Fixed canvas for ALL 36 frames → no jitter when the viewer flips frames.
@@ -64,15 +65,17 @@ def _find_wheel_bottom(alpha_arr, car_w):
     return h - 1
 
 
-def _platform_geometry(cw, ch):
+def _platform_geometry(cw, ch, depth_ratio=None):
     """Return shared turntable geometry and its optical contact plane."""
     pcx = cw // 2
     pcy = int(ch * PLATFORM_CY_FRAC)
     prw = int(cw * PLATFORM_W_FRAC / 2)
-    prh = int(ch * PLATFORM_H_FRAC / 2)
+    prh = int(ch * (depth_ratio or PLATFORM_H_FRAC) / 2)
+    pcy = min(pcy, ch - prh - 12)
     top_y = pcy - prh
     contact_y = top_y + int(round(prh * PLATFORM_CONTACT_DEPTH_FRAC))
     return {
+        'canvas_height': ch,
         'center_x': pcx,
         'center_y': pcy,
         'radius_x': prw,
@@ -110,117 +113,8 @@ def _find_contact_spans(alpha_arr, wheel_bottom, car_w):
 
 
 def _find_independent_alpha_contacts(alpha_arr):
-    """Estimate separate wheel bottoms when circle detection has no pair.
-
-    The fallback follows the lower alpha envelope independently on the left and
-    right of the vehicle. Broad, well-supported lobes are preferred over narrow
-    tow bars or segmentation whiskers, and each returned contact keeps its own
-    row instead of inheriting the deepest global pixel.
-    """
-    height, width = alpha_arr.shape
-    if width < 80 or height < 60 or width / max(height, 1) < 1.0:
-        return []
-
-    mask = (alpha_arr >= 160).astype(np.uint8)
-    mask = cv2.morphologyEx(
-        mask,
-        cv2.MORPH_OPEN,
-        cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3)),
-    )
-    bottom = np.full(width, np.nan, dtype=np.float64)
-    support = np.zeros(width, dtype=np.float64)
-    support_depth = max(6, int(round(height * 0.10)))
-    for x in range(width):
-        rows = np.flatnonzero(mask[:, x])
-        if rows.size:
-            contact = int(rows[-1])
-            band_top = max(0, contact - support_depth + 1)
-            vertical_support = int(np.count_nonzero(mask[band_top:contact + 1, x]))
-            if vertical_support >= max(3, int(round(height * 0.025))):
-                bottom[x] = float(contact)
-                support[x] = float(vertical_support)
-
-    smooth_radius = max(2, int(round(width * 0.0125)))
-    smoothed = np.full(width, np.nan, dtype=np.float64)
-    for x in range(width):
-        start = max(0, x - smooth_radius)
-        end = min(width, x + smooth_radius + 1)
-        values = bottom[start:end]
-        values = values[np.isfinite(values)]
-        if values.size >= max(3, smooth_radius // 2):
-            smoothed[x] = float(np.median(values))
-
-    contacts = []
-    for start_ratio, end_ratio, expected_ratio in (
-        (0.03, 0.50, 0.25),
-        (0.50, 0.97, 0.75),
-    ):
-        start = int(round(width * start_ratio))
-        end = int(round(width * end_ratio))
-        columns = np.arange(start, end)
-        valid = np.isfinite(smoothed[columns]) & (smoothed[columns] >= height * 0.52)
-        if np.count_nonzero(valid) < max(8, int(round(width * 0.025))):
-            continue
-        valid_values = smoothed[columns][valid]
-        threshold = float(np.percentile(valid_values, 82)) - height * 0.012
-        deep = np.zeros(width, dtype=np.uint8)
-        deep_columns = columns[valid & (smoothed[columns] >= threshold)]
-        deep[deep_columns] = 1
-        gap_width = max(3, int(round(width * 0.012)))
-        deep = cv2.morphologyEx(
-            deep.reshape(1, -1),
-            cv2.MORPH_CLOSE,
-            np.ones((1, gap_width), np.uint8),
-        ).reshape(-1)
-        deep[:start] = 0
-        deep[end:] = 0
-        padded = np.concatenate(([0], deep, [0]))
-        changes = np.diff(padded)
-        runs = list(zip(np.where(changes == 1)[0], np.where(changes == -1)[0]))
-        minimum_width = max(6, int(round(width * 0.025)))
-        runs = [run for run in runs if run[1] - run[0] >= minimum_width]
-        if not runs:
-            continue
-
-        def run_score(run):
-            run_columns = np.arange(run[0], run[1])
-            run_values = bottom[run_columns]
-            finite = np.isfinite(run_values)
-            if not np.any(finite):
-                return -1e9
-            depth = float(np.percentile(run_values[finite], 88)) / max(height, 1)
-            run_width = (run[1] - run[0]) / max(width, 1)
-            support_score = float(np.mean(support[run_columns][finite])) / max(support_depth, 1)
-            center = (run[0] + run[1]) / 2.0 / max(width, 1)
-            position_prior = 1.0 - min(1.0, abs(center - expected_ratio) / 0.34)
-            return depth * 0.55 + min(1.0, run_width / 0.10) * 0.20 + support_score * 0.18 + position_prior * 0.07
-
-        best = max(runs, key=run_score)
-        run_columns = np.arange(best[0], best[1])
-        run_values = bottom[run_columns]
-        finite = np.isfinite(run_values)
-        run_columns, run_values = run_columns[finite], run_values[finite]
-        if run_values.size < minimum_width:
-            continue
-        contact_y = float(np.percentile(run_values, 90))
-        near = run_values >= contact_y - max(2.0, height * 0.008)
-        near_columns = run_columns[near]
-        if near_columns.size == 0:
-            continue
-        weights = np.maximum(support[near_columns], 1.0)
-        contact_x = float(np.average(near_columns, weights=weights))
-        radius = float(np.clip((best[1] - best[0]) * 0.55, height * 0.055, height * 0.22))
-        contacts.append({
-            'x': contact_x,
-            'y': contact_y,
-            'radius': radius,
-            'confidence': 0.18,
-        })
-
-    contacts.sort(key=lambda item: item['x'])
-    if len(contacts) == 2 and contacts[1]['x'] - contacts[0]['x'] < width * 0.25:
-        return [max(contacts, key=lambda item: item['y'])]
-    return contacts
+    """Find separate tire lobes without assuming one wheel per image half."""
+    return silhouette_contacts(alpha_arr)
 
 
 def _build_ground_contacts(vehicle, alpha_arr, wheel_bottom, car_w):
@@ -228,6 +122,14 @@ def _build_ground_contacts(vehicle, alpha_arr, wheel_bottom, car_w):
     detected = estimate_wheel_contacts(vehicle, minimum_aspect_ratio=1.0)
     if detected:
         return sorted(detected, key=lambda item: item['x'])
+
+    # A single clearly visible tire is safer than labelling a rear hitch as
+    # the second wheel. Preserve uncertainty instead of inventing a pair.
+    partial = tire_contacts(vehicle)
+    if partial:
+        if len(partial) == 2 and vehicle.width/vehicle.height < 1.65:
+            partial = [max(partial, key=lambda item: item['radius'])]
+        return partial
 
     alpha_contacts = _find_independent_alpha_contacts(alpha_arr)
     if alpha_contacts:
@@ -281,6 +183,15 @@ def _fit_contacts_to_platform(contacts, car_x, platform, fallback_bottom):
         'radius': 16.0,
         'confidence': 0.0,
     }]
+    # Match the studio floor to the measured perspective, rather than bending
+    # the photographed car to a thin ellipse. Normally the sequence planner
+    # has already chosen this depth for ALL frames, avoiding platform pumping.
+    required = _required_platform_radius(usable, car_x, platform)
+    if required > platform['radius_y']:
+        platform['radius_y'] = math.ceil(required)
+        platform['center_y'] = min(platform['center_y'], platform['canvas_height']-math.ceil(required)-12)
+        platform['top_y'] = platform['center_y']-platform['radius_y']
+        platform['contact_y'] = platform['top_y']+platform['radius_y']*PLATFORM_CONTACT_DEPTH_FRAC
     deepest = max(float(item['y']) for item in usable)
     preferred_y = float(platform['contact_y']) - deepest
 
@@ -302,6 +213,7 @@ def _fit_contacts_to_platform(contacts, car_x, platform, fallback_bottom):
         # one tire perfectly and making the other visibly float.
         car_y = (lower + upper) / 2.0
 
+    car_y = int(round(car_y))
     anchors = [
         {
             **item,
@@ -311,6 +223,48 @@ def _fit_contacts_to_platform(contacts, car_x, platform, fallback_bottom):
         for item in usable
     ]
     return int(round(car_y)), anchors
+
+
+def _required_platform_radius(contacts, car_x, platform):
+    """Minimum ellipse depth permitting one translation for all contacts."""
+    required = float(platform['radius_y'])
+    for first in contacts:
+        for second in contacts:
+            factors = []
+            for item in (first, second):
+                nx = (car_x+item['x']-platform['center_x']) / platform['radius_x']
+                factors.append(math.sqrt(max(.01, 1-min(.995, abs(nx))**2)))
+            required = max(required, (abs(first['y']-second['y'])+14) / sum(factors))
+    return required
+
+
+def build_grounding_layout(images, layout):
+    """Use one floor depth and car scale throughout the complete revolution."""
+    platform = _platform_geometry(CANVAS_W, CANVAS_H)
+    required = float(platform['radius_y'])
+    measured = 0
+    for index, source in images.items():
+        image = source.crop(source.getbbox()) if source.getbbox() else source
+        scale = min(CANVAS_H*CAR_HEIGHT_FILL*layout[index]['targetHeightRatio']/max(image.height, 1),
+                    CANVAS_W*.90/max(image.width, 1))
+        # Use the same measurement path as composition, at a bounded size.
+        proxy = image.copy()
+        proxy.thumbnail((960, 960), Image.Resampling.LANCZOS)
+        contacts = _build_ground_contacts(proxy, np.asarray(proxy.getchannel('A')),
+                                          proxy.height-1, proxy.width)
+        factor = image.height*scale/max(proxy.height, 1)
+        scaled = [{**item, 'x': item['x']*factor, 'y': item['y']*factor} for item in contacts]
+        required = max(required, _required_platform_radius(scaled, (CANVAS_W-image.width*scale)/2, platform))
+        measured += len(contacts) >= 2
+    # Leave room below the platform. A uniform shrink, if necessary, preserves
+    # body proportions and detail; no view-specific stretching or zoom jumps.
+    max_radius = CANVAS_H*.16
+    grounding_scale = min(1., max_radius / max(required, 1.))
+    depth_ratio = 2*min(max_radius, math.ceil(required+4))/CANVAS_H
+    for item in layout.values():
+        item.update({'platformDepthRatio': depth_ratio, 'groundingScale': grounding_scale})
+    return {'platformDepthRatio': round(depth_ratio, 4),
+            'groundingScale': round(grounding_scale, 4), 'groundContactPairFrames': measured}
 
 
 def _enhance_vehicle_detail(vehicle):
@@ -376,12 +330,12 @@ def _make_background(cw, ch, ground_y):
     return _make_background_template(cw, ch, ground_y).copy()
 
 
-def _draw_turntable(canvas, cw, ch):
+def _draw_turntable(canvas, cw, ch, geometry=None):
     """
     Draw a glossy turntable with rim, inner ring, hub, and highlight.
     Returns the shared turntable geometry.
     """
-    geometry = _platform_geometry(cw, ch)
+    geometry = geometry or _platform_geometry(cw, ch)
     pcx = geometry['center_x']
     pcy = geometry['center_y']
     prw = geometry['radius_x']
@@ -547,7 +501,8 @@ def _draw_reflection(
 # MAIN ENTRY POINT
 # ═══════════════════════════════════════════════════════════════════════
 
-def create_studio_image(vehicle_image, global_max_h=None, target_height_ratio=None):
+def create_studio_image(vehicle_image, global_max_h=None, target_height_ratio=None,
+                        platform_depth_ratio=None, grounding_scale=1.0):
     """
     Place vehicle onto a studio turntable.
 
@@ -592,6 +547,7 @@ def create_studio_image(vehicle_image, global_max_h=None, target_height_ratio=No
     # Ensure the scaled width doesn't exceed 90% of the canvas width
     if (vw * scale) > int(cw * 0.90):
         scale = int(cw * 0.90) / vw
+    scale *= max(.1, min(1., float(grounding_scale)))
         
     target_w = int(vw * scale)
     local_target_h = int(vh * scale) # The actual height of THIS scaled frame
@@ -616,7 +572,7 @@ def create_studio_image(vehicle_image, global_max_h=None, target_height_ratio=No
     bottom_gap = local_target_h - 1 - wheel_bottom_local
 
     # ── Turntable and optical contact plane ──
-    platform = _platform_geometry(cw, ch)
+    platform = _platform_geometry(cw, ch, platform_depth_ratio)
     plat_top_y = platform['top_y']
     contact_y = platform['contact_y']
 
@@ -630,6 +586,8 @@ def create_studio_image(vehicle_image, global_max_h=None, target_height_ratio=No
         platform,
         wheel_bottom_local,
     )
+    plat_top_y = platform['top_y']
+    contact_y = platform['contact_y']
     contact_rows = [item['canvasY'] for item in contact_anchors]
     reflection_y = int(round(max(contact_rows, default=contact_y)))
     perspective_delta = (
@@ -647,7 +605,7 @@ def create_studio_image(vehicle_image, global_max_h=None, target_height_ratio=No
         wheel_bottom_local,
         perspective_delta=perspective_delta,
     )
-    _draw_turntable(canvas, cw, ch)
+    _draw_turntable(canvas, cw, ch, platform)
     _draw_grounded_shadow(canvas, vehicle_scaled, contact_anchors)
     canvas.paste(vehicle_scaled, (car_x, car_y), vehicle_scaled)
 
