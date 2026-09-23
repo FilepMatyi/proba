@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AlertTriangle, ArrowLeft, Camera, Check, Copy, ExternalLink, LoaderCircle, Rotate3D, ShieldCheck, Trash2 } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Camera, Check, Copy, ExternalLink, LoaderCircle, Rotate3D, ShieldCheck, Sparkles, Trash2 } from 'lucide-react';
 
 import { deleteSession, getSessions } from '../api/uploader';
 
@@ -131,6 +131,7 @@ export default function Dashboard() {
                 </div>
 
                 <div className="project-actions">
+                  {completed && <button className="button button-secondary" onClick={() => navigate(`/studio-photos/${session.vehicleId}`)}><Sparkles size={16} /> 10 Studio Photos</button>}
                   <button className="button button-secondary" onClick={() => copyEmbedCode(session.vehicleId)} disabled={!completed}>
                     {copiedId === session.vehicleId ? <Check size={16} /> : <Copy size={16} />}
                     {copiedId === session.vehicleId ? 'Másolva' : 'Embed'}

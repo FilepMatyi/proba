@@ -128,6 +128,9 @@ docker compose run --rm ai-worker python recompose.py jarmu-azonosito
 - `GET /api/sessions/:vehicleId` – egy projekt élő állapota
 - `DELETE /api/sessions/:vehicleId` – befejezett vagy sikertelen projekt törlése
 - `GET /viewer/:vehicleId` – interaktív 360° bemutató
+- `GET /api/vehicles/:vehicleId/studio-photos` – a különálló 10 képes export állapota és manifestje
+- `POST /api/vehicles/:vehicleId/studio-photos` – export indítása egy kész, 36 nézetes sessionből
+- `GET /api/vehicles/:vehicleId/studio-photos/files/:filename` – egy JPEG vagy az `album.zip` letöltése
 - `GET /embed.js` – beágyazó kliens
 - `PATCH /internal/vehicles/:vehicleId/frame-processed` – tokennel védett worker callback
 - `POST /internal/vehicles/:vehicleId/quality` – tokennel védett minőségellenőrzési callback
@@ -139,6 +142,17 @@ docker compose run --rm ai-worker python recompose.py jarmu-azonosito
 - kétujjas nagyítás, pásztázás, dupla kattintásos zoom és visszaállítás
 - nézetscrubber, automatikus forgatás, teljes képernyő és natív megosztás
 - automatikus frissítés, ha a viewer a feldolgozás befejezése előtt nyílik meg
+
+## 10 Studio Photos
+
+A dashboard külön akciójából vagy a `/studio-photos/:vehicleId` oldalon indítható;
+nem helyettesíti a 36 képes viewert. A worker a kész session átlátszó,
+expozíció-normalizált képeiből determinisztikusan 10 körben elosztott nézetet
+választ, és 3840 × 2160-as JPEG-eket, manifestet és ZIP-et ment a MinIO
+`<vehicleId>/studio-photos/` prefixébe. A stúdiókompozíció a teljes maszk
+közepét és robusztus alsó érintkezési szintjét használja; az autót nem forgatja
+kerékpontok alapján. A 4K kimeneti méret önmagában nem tudja visszaállítani az
+eredeti videóból hiányzó karc- vagy horpadásrészleteket.
 
 ## Ellenőrzések
 

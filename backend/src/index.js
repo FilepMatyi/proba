@@ -8,6 +8,7 @@ const photoRoutes = require('./routes/photos');
 const viewerRoutes = require('./routes/viewer');
 const internalRoutes = require('./routes/internal');
 const sessionsRoutes = require('./routes/sessions');
+const studioPhotosRoutes = require('./routes/studioPhotos');
 
 const app = express();
 
@@ -33,6 +34,7 @@ app.use((req, res, next) => {
 
 app.use('/api', photoRoutes);
 app.use('/api', sessionsRoutes);
+app.use('/api', studioPhotosRoutes);
 app.use('/internal', internalRoutes);
 
 // Serve static frontend files

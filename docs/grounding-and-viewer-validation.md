@@ -2,19 +2,16 @@
 
 ## Geometry
 
-- Tire footprints use independent lower-silhouette lobes plus neutral material
-  and local edge support. Both wheels may be on the same side of the image.
-- Circle candidates also require a matching silhouette lobe. Narrow rear-view
-  pairs around the bumper/hitch are treated conservatively.
-- The perspective solver uses rotated contact coordinates, not a clipped angle.
-  The default warp limit is now 0.3 (at most roughly 15% column-scale change).
-  Camera height cannot be reconstructed exactly from a single 2D cutout.
-- The complete orbit shares one platform depth and scale. The compositor solves
-  for a common translation keeping measured contacts inside the ellipse.
-  It enlarges the surface when a fixed thin ellipse cannot contain the pair.
-- A projected contact residual is not an independent measurement of correctness.
-  Occluded wheels and bumper-only masks still need visual review. Do not treat
-  a successful geometric fit as proof that the detector chose the right parts.
+- The active worker no longer applies scene-roll, wheel-point roll, or
+  perspective warp to the captured vehicle. Those helpers remain only for
+  legacy diagnostics and their own tests.
+- Each final image is proportionally scaled, centered from the mask bounding
+  box, and translated so a robust lower silhouette anchor meets a fixed floor
+  level. Narrow tow hitches and isolated alpha dust do not define that anchor.
+- Tire locations may position contact shadows, but they never rotate or warp
+  the vehicle. The wider fixed turntable surface supports farther tires in
+  three-quarter views. A single 2D cutout still cannot recover camera height
+  or true 3D geometry; inspect difficult views visually.
 
 ## Viewer
 
@@ -32,12 +29,10 @@
 ```sh
 docker compose exec -T backend npm test
 docker compose exec -T ai-worker python -m unittest discover -s tests
-docker compose exec -T ai-worker python inspect_grounding.py SESSION --audit --frames 1 5 6 21 28 36
 ```
 
-The diagnostic command only reads stored assets and writes local files under
-`ai-worker/diagnostics/grounding`. The contact sheet and JSON show inferred
-anchors; visually check that those anchors actually belong to tires.
+The legacy `inspect_grounding.py` audit can still examine inferred wheel
+contacts, but its wheel-fit score no longer describes the active compositor.
 
 To compare a new processing variant, create a separate local session and run:
 

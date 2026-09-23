@@ -23,8 +23,8 @@ from config import (
     TARGET_FRAMES,
 )
 from processing.exposure_normalize import normalize_exposure
-from processing.stabilization import build_sequence_layout, stabilize_vehicle_sequence
-from processing.studio_compose import create_studio_image, build_grounding_layout
+from processing.stabilization import build_sequence_layout
+from processing.studio_compose import create_studio_image
 
 
 minio_client = Minio(
@@ -70,11 +70,10 @@ def recompose_vehicle(vehicle_id, compose_only=False, source_vehicle=None):
         normalized = images
         vehicle_report = {'composeOnly': True}
     else:
-        levelled, vehicle_report = stabilize_vehicle_sequence(images)
-        normalized = normalize_exposure(levelled)
+        normalized = normalize_exposure(images)
+        vehicle_report = {'alignmentMode': 'mask-translation', 'rotationDegrees': 0}
     layout, layout_report = build_sequence_layout(normalized)
     layout_report.update(vehicle_report)
-    layout_report.update(build_grounding_layout(normalized, layout))
 
     redis_client.delete(f'vehicle:{vehicle_id}:layout')
     for index, image in normalized.items():
@@ -95,8 +94,6 @@ def recompose_vehicle(vehicle_id, compose_only=False, source_vehicle=None):
         studio = create_studio_image(
             image,
             target_height_ratio=layout[index]['targetHeightRatio'],
-            platform_depth_ratio=layout[index]['platformDepthRatio'],
-            grounding_scale=layout[index]['groundingScale'],
         )
         _upload_image(
             PROCESSED_BUCKET,
@@ -139,7 +136,7 @@ def main():
     parser.add_argument(
         '--compose-only',
         action='store_true',
-        help='Rebuild studio JPEGs without rotating or overwriting transparent frames.',
+        help='Rebuild studio JPEGs without overwriting transparent frames.',
     )
     parser.add_argument('vehicle_ids', nargs='+')
     parser.add_argument('--source-vehicle', help='Read source masks from another session; preserve those originals.')

@@ -4,6 +4,7 @@ import { AlertTriangle, ArrowRight, Check, ChevronRight, Gauge, LayoutDashboard,
 
 import CameraView from './components/CameraView';
 import Dashboard from './components/Dashboard';
+import StudioPhotos from './components/StudioPhotos';
 import { getSession, uploadVideo } from './api/uploader';
 import './styles.css';
 
@@ -227,6 +228,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<CaptureFlow />} />
         <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/studio-photos/:vehicleId" element={<StudioPhotos />} />
       </Routes>
     </BrowserRouter>
   );

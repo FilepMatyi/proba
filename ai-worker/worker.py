@@ -27,17 +27,11 @@ from processing.frame_selector import analyze_image_quality, select_optimal_fram
 from processing.quality_report import segmentation_quality_report
 from processing.source_detail import attach_mask_to_source
 from processing.stabilization import (
-    apply_sequence_alignment_plan,
-    apply_sequence_roll_plan,
-    apply_vehicle_transform,
     build_sequence_layout,
-    build_vehicle_alignment_plan,
-    combine_scene_and_vehicle_roll,
-    estimate_visual_roll,
     level_source_image,
-    smooth_roll_measurements,
 )
-from processing.studio_compose import create_studio_image, build_grounding_layout
+from processing.studio_compose import create_studio_image
+from processing.studio_export import export_studio_photos
 
 
 STREAM_NAME = 'photo-processing-stream'
@@ -209,31 +203,10 @@ def handle_select_frames(fields):
         sensor_data
         and any(abs(item.get('unwrapped_alpha', 0.0)) > 0.0 for group in candidate_groups for item in group)
     )
-    roll_measurements = []
-    for selected_detail in selected_details:
-        image_bytes = _download_bytes(
-            RAW_BUCKET,
-            candidate_keys[selected_detail['candidateIndex']],
-        )
-        roll_measurements.append(estimate_visual_roll(image_bytes))
-    roll_plan = smooth_roll_measurements(roll_measurements)
-    for selected_detail, roll_item in zip(selected_details, roll_plan):
-        selected_detail['roll'] = roll_item
-
     quality_score, warnings, metrics = _selection_report(
         selected_details, sensor_assisted, frame_count
     )
-    metrics['stabilizationInput'] = {
-        'visualRoll': True,
-        'averageConfidence': round(
-            sum(item['planConfidence'] for item in roll_plan) / max(len(roll_plan), 1), 4
-        ),
-        'correctedFrames': sum(abs(item['correction']) >= 0.04 for item in roll_plan),
-        'maximumCorrectionDegrees': round(
-            max((abs(item['correction']) for item in roll_plan), default=0.0), 3
-        ),
-        'limitedFrames': sum(bool(item['limited']) for item in roll_plan),
-    }
+    metrics['stabilizationInput'] = {'mode': 'mask-translation', 'rotationDegrees': 0}
     redis_client.setex(
         f'vehicle:{vehicle_id}:selection_quality',
         STATE_TTL_SECONDS,
@@ -248,8 +221,6 @@ def handle_select_frames(fields):
             'vehicleId': vehicle_id,
             'photoIndex': str(output_offset + 1),
             'candidateKey': candidate_keys[best_index],
-            'rollCorrection': str(selected_detail['roll']['correction']),
-            'rollConfidence': str(selected_detail['roll']['planConfidence']),
         })
 
     print(f'[{vehicle_id}] Selected and queued {len(selected)} unique frames')
@@ -259,7 +230,6 @@ def handle_bg_removal(fields):
     vehicle_id = fields['vehicleId']
     photo_index = int(fields['photoIndex'])
     source_bytes = _download_bytes(RAW_BUCKET, fields['candidateKey'])
-    roll_correction = float(fields.get('rollCorrection', 0.0))
     # Bound 4K memory before inference, but preserve the unrotated source edge
     # so clipping remains visible to the mask quality checks below.
     image_bytes = level_source_image(source_bytes, 0.0)
@@ -305,7 +275,6 @@ def handle_bg_removal(fields):
     )
 
     redis_client.hset(f'vehicle:{vehicle_id}:heights', str(photo_index), str(vehicle_height))
-    redis_client.hset(f'vehicle:{vehicle_id}:rolls', str(photo_index), str(roll_correction))
     redis_client.hset(f'vehicle:{vehicle_id}:mask_quality', str(photo_index), json.dumps({
         'bboxWidthRatio': round(bbox_width, 4),
         'bboxHeightRatio': round(bbox_height, 4),
@@ -313,8 +282,7 @@ def handle_bg_removal(fields):
         'touchesEdge': touches_edge,
         'targetLockApplied': removal_metadata['targetLockApplied'],
         'sourceComponentCount': removal_metadata['componentCount'],
-        'rollCorrection': round(roll_correction, 4),
-        'rollConfidence': round(float(fields.get('rollConfidence', 0.0)), 4),
+        'alignmentMode': 'mask-translation',
     }))
     redis_client.sadd(f'vehicle:{vehicle_id}:bg_done', str(photo_index))
     _expire_state_keys(vehicle_id)
@@ -362,50 +330,22 @@ def normalize_transparent_frames(vehicle_id):
             image_bytes = _download_bytes(RAW_BUCKET, f'{vehicle_id}/transparent-{index}.png')
             with Image.open(io.BytesIO(image_bytes)) as image:
                 planning = image.convert('RGBA')
-                # Give wheel landmark detection the full 960 px budget instead
-                # of spending it on transparent padding around the cutout.
+                # Plan layout at 960 px; final masks are not rotated or warped.
                 planning_bbox = planning.getbbox()
                 if planning_bbox:
                     planning = planning.crop(planning_bbox)
                 planning.thumbnail((960, 960), Image.Resampling.LANCZOS)
                 planning_images[index] = planning.copy()
 
-        raw_rolls = redis_client.hgetall(f'vehicle:{vehicle_id}:rolls')
-        scene_roll_plan = {
-            int(index): float(value)
-            for index, value in raw_rolls.items()
-        }
-        # Scene lines remove genuine camera roll first. Wheel geometry is then
-        # measured only for the small residual around the sequence's natural
-        # three-quarter-view perspective curve.
-        scene_levelled_planning = apply_sequence_roll_plan(
-            planning_images,
-            scene_roll_plan,
-        )
-        vehicle_roll_plan, perspective_warp_plan, vehicle_level_report = build_vehicle_alignment_plan(
-            scene_levelled_planning
-        )
-        combined_roll_plan = combine_scene_and_vehicle_roll(
-            scene_roll_plan,
-            vehicle_roll_plan,
-        )
-        # Rebuild from the untouched proxy: the two corrections are deliberately
-        # combined so the final vehicle is resampled by rotation only once.
-        levelled_planning = apply_sequence_alignment_plan(
-            planning_images,
-            combined_roll_plan,
-            perspective_warp_plan,
-        )
-        exposure_plan = build_exposure_plan(levelled_planning)
+        exposure_plan = build_exposure_plan(planning_images)
         normalized_planning = {
             index: apply_exposure_plan(image, exposure_plan.get(index))
-            for index, image in levelled_planning.items()
+            for index, image in planning_images.items()
         }
         layout, stabilization_report = build_sequence_layout(normalized_planning)
-        stabilization_report.update(vehicle_level_report)
-        stabilization_report.update(build_grounding_layout(normalized_planning, layout))
         stabilization_report.update({
-            'singlePassRotation': True,
+            'alignmentMode': 'mask-translation',
+            'rotationDegrees': 0,
             'sourceResolutionDetail': True,
             'planningSidePixels': 960,
         })
@@ -414,11 +354,7 @@ def normalize_transparent_frames(vehicle_id):
         for index in range(1, TARGET_FRAMES + 1):
             image_bytes = _download_bytes(RAW_BUCKET, f'{vehicle_id}/transparent-{index}.png')
             with Image.open(io.BytesIO(image_bytes)) as source:
-                image = apply_vehicle_transform(
-                    source.convert('RGBA'),
-                    combined_roll_plan.get(index, 0.0),
-                    perspective_warp_plan.get(index, 0.0),
-                )
+                image = source.convert('RGBA')
             image = apply_exposure_plan(image, exposure_plan.get(index))
             output = io.BytesIO()
             image.save(output, format='PNG', compress_level=4)
@@ -475,8 +411,6 @@ def handle_studio(fields):
         vehicle_image,
         global_max_h=reference_height,
         target_height_ratio=layout.get('targetHeightRatio'),
-        platform_depth_ratio=layout.get('platformDepthRatio'),
-        grounding_scale=layout.get('groundingScale', 1.0),
     )
     output = io.BytesIO()
     studio_image.save(output, format='JPEG', quality=96, subsampling=0, optimize=True)
@@ -511,6 +445,33 @@ def handle_studio(fields):
     notify_backend_frame_processed(vehicle_id, photo_index)
     redis_client.sadd(f'vehicle:{vehicle_id}:studio_done', str(photo_index))
     _expire_state_keys(vehicle_id)
+
+
+def handle_studio_export(fields):
+    vehicle_id = fields['vehicleId']
+    state_key = f'vehicle:{vehicle_id}:studio_photos'
+
+    def read_mask(index):
+        with Image.open(io.BytesIO(_download_bytes(RAW_BUCKET, f'{vehicle_id}/transparent-{index}.png'))) as image:
+            return image.convert('RGBA').copy()
+
+    def read_layout(index):
+        try:
+            return json.loads(redis_client.hget(f'vehicle:{vehicle_id}:layout', str(index)) or '{}')
+        except (TypeError, ValueError):
+            return {}
+
+    def save_object(key, data, content_type):
+        minio_client.put_object(PROCESSED_BUCKET, key, io.BytesIO(data), len(data), content_type=content_type)
+
+    def progress(number):
+        redis_client.hset(state_key, mapping={'status': 'processing', 'completed': number})
+        redis_client.expire(state_key, 7*24*3600)
+
+    manifest = export_studio_photos(vehicle_id, read_mask, read_layout, save_object, progress,
+                                    frame_count=TARGET_FRAMES)
+    redis_client.hset(state_key, mapping={'status': 'ready', 'completed': manifest['count']})
+    redis_client.expire(state_key, 7*24*3600)
 
 
 def notify_backend_frame_processed(vehicle_id, photo_index):
@@ -566,6 +527,7 @@ def process_message(message_id, fields):
         'select-frames': handle_select_frames,
         'process-bg-removal': handle_bg_removal,
         'process-studio': handle_studio,
+        'export-studio-photos': handle_studio_export,
     }
 
     handler = handlers.get(job_type)
@@ -587,7 +549,12 @@ def process_message(message_id, fields):
                 'originalMessageId': message_id,
                 'error': str(error)[:500],
             })
-            notify_backend_failed(fields.get('vehicleId', ''))
+            if job_type == 'export-studio-photos':
+                key = f"vehicle:{fields.get('vehicleId', '')}:studio_photos"
+                redis_client.hset(key, mapping={'status': 'failed', 'error': str(error)[:300]})
+                redis_client.expire(key, 7*24*3600)
+            else:
+                notify_backend_failed(fields.get('vehicleId', ''))
             redis_client.xack(STREAM_NAME, CONSUMER_GROUP, message_id)
             redis_client.hdel('photo-processing-attempts', message_id)
 

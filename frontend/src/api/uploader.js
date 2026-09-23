@@ -47,3 +47,17 @@ export async function getSession(vehicleId) {
 export async function deleteSession(vehicleId) {
   return parseResponse(await fetch(`${API_BASE_URL}/sessions/${encodeURIComponent(vehicleId)}`, { method: 'DELETE' }));
 }
+
+export async function getStudioPhotos(vehicleId) {
+  return parseResponse(await fetch(`${API_BASE_URL}/vehicles/${encodeURIComponent(vehicleId)}/studio-photos`));
+}
+
+export async function generateStudioPhotos(vehicleId) {
+  return parseResponse(await fetch(`${API_BASE_URL}/vehicles/${encodeURIComponent(vehicleId)}/studio-photos`, {
+    method: 'POST',
+  }));
+}
+
+export function studioPhotoUrl(vehicleId, filename) {
+  return `${API_BASE_URL}/vehicles/${encodeURIComponent(vehicleId)}/studio-photos/files/${filename}`;
+}

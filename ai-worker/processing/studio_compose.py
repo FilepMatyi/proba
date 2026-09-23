@@ -21,7 +21,7 @@ CAR_HEIGHT_FILL = 0.62
 
 # Turntable geometry (fraction of canvas)
 PLATFORM_W_FRAC  = 0.85        # Wider turntable base
-PLATFORM_H_FRAC  = 0.12        # Enough top-surface depth for 3/4 wheel contacts
+PLATFORM_H_FRAC  = 0.36        # Include the farther tire in the visible floor surface
 PLATFORM_CY_FRAC = 0.82        # Lowered to make room for larger car
 # The vehicle contact row belongs slightly inside the visible top surface.
 # Aligning it to the ellipse's topmost tangent makes even a perfect mask float.
@@ -63,6 +63,43 @@ def _find_wheel_bottom(alpha_arr, car_w):
 
     # Fallback
     return h - 1
+
+
+def robust_ground_anchor(alpha_arr):
+    """Supported low silhouette level; isolated hooks and alpha dust are ignored."""
+    height, width = alpha_arr.shape
+    if not np.any(alpha_arr >= 160):
+        return None
+    mask = cv2.morphologyEx((alpha_arr >= 160).astype(np.uint8), cv2.MORPH_OPEN,
+                            cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3)))
+    present = mask.any(axis=0)
+    if not present.any():
+        return None
+    bottom = height-1-np.argmax(mask[::-1], axis=0)
+    # Select a low run with meaningful width. A narrow tow hitch cannot
+    # anchor the vehicle, while the lower arc of a tire spans many columns.
+    low = present & (bottom >= np.percentile(bottom[present], 98)-height*.018)
+    changes = np.diff(np.r_[0, low.astype(np.int8), 0])
+    runs = [(a, b) for a, b in zip(np.where(changes == 1)[0], np.where(changes == -1)[0])
+            if b-a >= max(5, round(width*.018))]
+    if runs:
+        values = np.concatenate([bottom[a:b] for a, b in runs])
+        return int(round(np.percentile(values, 94)))
+    return int(round(np.percentile(bottom[present], 98)))
+
+
+def studio_placement(image_size, anchor_y, canvas_size, target_height_ratio=1.):
+    """Return proportional scale and translation; no angle or image warp."""
+    width, height = image_size
+    canvas_w, canvas_h = canvas_size
+    ratio = max(.84, min(1.02, float(target_height_ratio)))
+    scale = min(canvas_h*CAR_HEIGHT_FILL*ratio/max(height, 1), canvas_w*.90/max(width, 1))
+    scaled_w, scaled_h = max(1, round(width*scale)), max(1, round(height*scale))
+    floor = _platform_geometry(canvas_w, canvas_h)
+    ground_y = round(floor['center_y']+floor['radius_y']*.22)
+    x = (canvas_w-scaled_w)//2
+    y = ground_y-round(float(anchor_y)*scaled_h/max(height, 1))
+    return (scaled_w, scaled_h), (x, y), ground_y
 
 
 def _platform_geometry(cw, ch, depth_ratio=None):
@@ -502,16 +539,14 @@ def _draw_reflection(
 # ═══════════════════════════════════════════════════════════════════════
 
 def create_studio_image(vehicle_image, global_max_h=None, target_height_ratio=None,
-                        platform_depth_ratio=None, grounding_scale=1.0):
+                        canvas_size=None):
     """
     Place vehicle onto a studio turntable.
 
-    Key design decisions:
-    - Fixed high-resolution 16:9 canvas for all 36 frames → no jitter
-    - Car scaled to 62% of canvas height → premium framing without clipping
-    - Wheel-bottom row (not bbox bottom) aligned to an optical contact plane
-      inside the turntable surface, avoiding a tangent/hovering appearance
-    - LANCZOS resampling for sharpest edges
+    The mask bounding box controls horizontal framing. A robust lower mask
+    anchor is translated to the fixed floor level; the vehicle is never
+    rotated, sheared or warped from wheel positions. The same composition is
+    used for the viewer and the separate high-resolution studio export.
 
     Args:
         vehicle_image: PIL RGBA Image with transparent background
@@ -531,116 +566,41 @@ def create_studio_image(vehicle_image, global_max_h=None, target_height_ratio=No
     if bbox:
         vehicle_image = vehicle_image.crop(bbox)
 
-    cw, ch = CANVAS_W, CANVAS_H
+    cw, ch = canvas_size or (CANVAS_W, CANVAS_H)
 
-    # ── Scale car ──
-    vw, vh = vehicle_image.size
-    
-    target_h = int(ch * CAR_HEIGHT_FILL)
-    if target_height_ratio is not None:
-        safe_ratio = max(0.84, min(float(target_height_ratio), 1.02))
-        scale = (target_h * safe_ratio) / max(vh, 1)
-    else:
-        reference_vh = global_max_h if global_max_h else vh
-        scale = target_h / reference_vh
-    
-    # Ensure the scaled width doesn't exceed 90% of the canvas width
-    if (vw * scale) > int(cw * 0.90):
-        scale = int(cw * 0.90) / vw
-    scale *= max(.1, min(1., float(grounding_scale)))
-        
-    target_w = int(vw * scale)
-    local_target_h = int(vh * scale) # The actual height of THIS scaled frame
-    
-    vehicle_scaled = vehicle_image.resize((target_w, local_target_h), Image.LANCZOS)
-    vehicle_scaled = _enhance_vehicle_detail(vehicle_scaled)
-
-    # ── Find the actual wheel-bottom row ──
-    alpha_arr = np.array(vehicle_scaled)[:, :, 3]
-    silhouette_bottom_local = _find_wheel_bottom(alpha_arr, target_w)
-    ground_contacts = _build_ground_contacts(
-        vehicle_scaled,
-        alpha_arr,
-        silhouette_bottom_local,
-        target_w,
+    # The final composition uses only a supported lower mask level and a fixed
+    # studio floor. It never rotates or shears the vehicle from wheel points.
+    source_alpha = np.asarray(vehicle_image.getchannel('A'))
+    anchor = robust_ground_anchor(source_alpha)
+    if anchor is None:
+        platform = _platform_geometry(cw, ch)
+        canvas = _make_background(cw, ch, platform['top_y'])
+        _draw_turntable(canvas, cw, ch, platform)
+        return canvas
+    dimensions, (car_x, car_y), ground_y = studio_placement(
+        vehicle_image.size, anchor, (cw, ch),
+        1. if target_height_ratio is None else target_height_ratio,
     )
-    wheel_bottom_local = int(round(max(
-        (item['y'] for item in ground_contacts),
-        default=silhouette_bottom_local,
-    )))
-    # How many pixels of "dead space" below the wheels?
-    bottom_gap = local_target_h - 1 - wheel_bottom_local
-
-    # ── Turntable and optical contact plane ──
-    platform = _platform_geometry(cw, ch, platform_depth_ratio)
-    plat_top_y = platform['top_y']
-    contact_y = platform['contact_y']
-
-    car_x = (cw - target_w) // 2
-    # ── Fit the two projected wheel contacts to the platform surface ──
-    # The contacts keep their perspective Y difference; only a shared vertical
-    # translation is solved, so the body is never tilted to fake grounding.
-    car_y, contact_anchors = _fit_contacts_to_platform(
-        ground_contacts,
-        car_x,
-        platform,
-        wheel_bottom_local,
-    )
-    plat_top_y = platform['top_y']
-    contact_y = platform['contact_y']
-    contact_rows = [item['canvasY'] for item in contact_anchors]
-    reflection_y = int(round(max(contact_rows, default=contact_y)))
-    perspective_delta = (
-        max(contact_rows) - min(contact_rows)
-        if len(contact_rows) >= 2 else 0.0
-    )
-
-    # ── Assemble canvas ──
-    canvas = _make_background(cw, ch, plat_top_y)
-    _draw_reflection(
-        canvas,
-        vehicle_scaled,
-        car_x,
-        reflection_y,
-        wheel_bottom_local,
-        perspective_delta=perspective_delta,
-    )
+    vehicle_scaled = _enhance_vehicle_detail(vehicle_image.resize(dimensions, Image.Resampling.LANCZOS))
+    platform = _platform_geometry(cw, ch)
+    canvas = _make_background(cw, ch, platform['top_y'])
     _draw_turntable(canvas, cw, ch, platform)
-    _draw_grounded_shadow(canvas, vehicle_scaled, contact_anchors)
+    # Contact shadows may follow independently visible tires, but their
+    # positions never change the vehicle placement or its orientation.
+    tire_shadows = tire_contacts(vehicle_scaled)
+    if tire_shadows:
+        anchors = [{'canvasX': car_x+item['x'], 'canvasY': car_y+item['y'],
+                    'radius': item['radius']} for item in tire_shadows]
+        _draw_grounded_shadow(canvas, vehicle_scaled, anchors)
+    else:
+        shadow = Image.new('RGBA', (cw, ch), (0, 0, 0, 0))
+        sd = ImageDraw.Draw(shadow)
+        half_w = dimensions[0]*.38
+        half_h = max(9, dimensions[1]*.035)
+        center_x = cw/2
+        sd.ellipse((center_x-half_w, ground_y-half_h, center_x+half_w, ground_y+half_h),
+                   fill=(16, 20, 20, 62))
+        shadow = shadow.filter(ImageFilter.GaussianBlur(radius=max(6, round(ch*.012))))
+        canvas.paste(shadow, (0, 0), shadow)
     canvas.paste(vehicle_scaled, (car_x, car_y), vehicle_scaled)
-
-    # ── Contrast boost for punch ──
-    canvas = ImageEnhance.Contrast(canvas).enhance(1.08)
-
-    # ── Color harmonization: warm up slightly to match studio lighting ──
-    # Shift toward neutral warm by reducing blue cast from outdoor captures
-    canvas_arr = np.array(canvas)
-    # Subtle warm shift: reduce blue by 3%, increase red by 1%
-    canvas_arr[:,:,0] = np.clip(canvas_arr[:,:,0].astype(np.int16) + 2, 0, 255).astype(np.uint8)  # R
-    canvas_arr[:,:,2] = np.clip(canvas_arr[:,:,2].astype(np.int16) - 4, 0, 255).astype(np.uint8)  # B
-    canvas = Image.fromarray(canvas_arr, 'RGB')
-
-    # ── Debug overlay ──
-    if DEBUG_OVERLAY:
-        dbg = ImageDraw.Draw(canvas)
-        # Bounding box (green)
-        dbg.rectangle([car_x, car_y, car_x + target_w, car_y + local_target_h],
-                      outline='lime', width=2)
-        # Independent wheel contacts (red)
-        for item in contact_anchors:
-            x = int(round(item['canvasX']))
-            y = int(round(item['canvasY']))
-            dbg.ellipse((x - 8, y - 8, x + 8, y + 8), outline='red', width=3)
-        # Platform top line (blue)
-        dbg.line([(0, plat_top_y), (cw, plat_top_y)], fill='blue', width=2)
-        # Optical contact plane (yellow)
-        dbg.line([(0, contact_y), (cw, contact_y)], fill='yellow', width=2)
-        # Label
-        dbg.text((10, 10),
-                 f"wheel_bottom={wheel_bottom_local} gap={bottom_gap} "
-                 f"plat_top={plat_top_y} contact={contact_y} "
-                 f"car_y={car_y} perspective_delta={perspective_delta:.1f} "
-                 f"global_h={global_max_h}",
-                 fill='white')
-
     return canvas
