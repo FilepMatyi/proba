@@ -1,0 +1,75 @@
+{
+  "source": "matched-original-candidates",
+  "views": [
+    {
+      "viewerFrame": 1,
+      "candidateFrame": 4,
+      "candidateKey": "car-test-5-premium-v2/candidates/frame-004.jpg",
+      "orbInliers": 302,
+      "nextBestInliers": 294
+    },
+    {
+      "viewerFrame": 5,
+      "candidateFrame": 14,
+      "candidateKey": "car-test-5-premium-v2/candidates/frame-014.jpg",
+      "orbInliers": 432,
+      "nextBestInliers": 230
+    },
+    {
+      "viewerFrame": 8,
+      "candidateFrame": 23,
+      "candidateKey": "car-test-5-premium-v2/candidates/frame-023.jpg",
+      "orbInliers": 411,
+      "nextBestInliers": 315
+    },
+    {
+      "viewerFrame": 12,
+      "candidateFrame": 35,
+      "candidateKey": "car-test-5-premium-v2/candidates/frame-035.jpg",
+      "orbInliers": 413,
+      "nextBestInliers": 194
+    },
+    {
+      "viewerFrame": 15,
+      "candidateFrame": 44,
+      "candidateKey": "car-test-5-premium-v2/candidates/frame-044.jpg",
+      "orbInliers": 359,
+      "nextBestInliers": 234
+    },
+    {
+      "viewerFrame": 19,
+      "candidateFrame": 56,
+      "candidateKey": "car-test-5-premium-v2/candidates/frame-056.jpg",
+      "orbInliers": 494,
+      "nextBestInliers": 285
+    },
+    {
+      "viewerFrame": 23,
+      "candidateFrame": 68,
+      "candidateKey": "car-test-5-premium-v2/candidates/frame-068.jpg",
+      "orbInliers": 340,
+      "nextBestInliers": 180
+    },
+    {
+      "viewerFrame": 26,
+      "candidateFrame": 77,
+      "candidateKey": "car-test-5-premium-v2/candidates/frame-077.jpg",
+      "orbInliers": 328,
+      "nextBestInliers": 243
+    },
+    {
+      "viewerFrame": 30,
+      "candidateFrame": 89,
+      "candidateKey": "car-test-5-premium-v2/candidates/frame-089.jpg",
+      "orbInliers": 473,
+      "nextBestInliers": 381
+    },
+    {
+      "viewerFrame": 33,
+      "candidateFrame": 98,
+      "candidateKey": "car-test-5-premium-v2/candidates/frame-098.jpg",
+      "orbInliers": 493,
+      "nextBestInliers": 126
+    }
+  ]
+}

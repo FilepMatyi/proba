@@ -1,4 +1,4 @@
-"""Quality-aware 10-view, 4K export from the normalized viewer cutouts."""
+"""Quality-aware 10-view, 4K export with optional original-frame detail masks."""
 import io
 import json
 import math
@@ -9,11 +9,32 @@ import cv2
 import numpy as np
 from PIL import Image
 
+from processing.exposure_normalize import apply_exposure_plan, measure_exposure
 from processing.studio_compose import create_studio_image, robust_ground_anchor
+from processing.studio_detail import segment_studio_source
 from processing.target_lock import mask_profile
 
 EXPORT_COUNT = 10
 EXPORT_SIZE = (3840, 2160)
+
+
+def _match_stored_exposure(detailed, normalized_reference):
+    """Carry the session's gentle exposure target onto a resegmented source.
+
+    The old cutout and new matte represent the same view.  Luminance-only,
+    tightly bounded correction avoids shifting the vehicle's paint hue.
+    """
+    source_stats = measure_exposure(detailed)
+    target_stats = measure_exposure(normalized_reference)
+    if not source_stats or not target_stats:
+        return detailed
+    mean, deviation = source_stats
+    target_mean, target_deviation = target_stats
+    return apply_exposure_plan(detailed, {
+        'sourceMean': mean,
+        'meanShift': float(np.clip(target_mean-mean, -8., 8.)),
+        'contrastGain': float(np.clip(target_deviation/max(deviation, 1.), .95, 1.05)),
+    })
 
 
 def select_studio_indices(frame_count, count=EXPORT_COUNT):
@@ -91,7 +112,8 @@ def select_quality_views(candidates, count=EXPORT_COUNT, orbit_frames=None):
 
 
 def export_studio_photos(vehicle_id, read_mask, read_layout, save_object, progress=None,
-                         frame_count=36, read_selection=None):
+                         frame_count=36, read_selection=None, read_source=None,
+                         predict_mask=None):
     """Generate separate JPEGs, a manifest and a downloadable ZIP.
 
     Storage callbacks make this testable without Redis, MinIO or the AI model.
@@ -123,6 +145,22 @@ def export_studio_photos(vehicle_id, read_mask, read_layout, save_object, progre
         for number, view in enumerate(chosen_views, 1):
             source_index = view['index']
             source = read_mask(source_index).convert('RGBA')
+            detail_metadata = {'sourceDetail': 'stored-mask'}
+            if read_source and predict_mask:
+                try:
+                    original_bytes = read_source(source_index)
+                    if original_bytes:
+                        detailed, detail_metadata = segment_studio_source(
+                            original_bytes, predict_mask)
+                        if cutout_quality(detailed) is not None:
+                            source = _match_stored_exposure(detailed, source)
+                            detail_metadata['sourceDetail'] = 'original-frame-soft-matte'
+                        else:
+                            detail_metadata = {'sourceDetail': 'stored-mask',
+                                               'sourceDetailFallback': 'empty detail matte'}
+                except Exception as error:
+                    detail_metadata = {'sourceDetail': 'stored-mask',
+                                       'sourceDetailFallback': str(error)[:160]}
             layout = read_layout(source_index) or {}
             studio = create_studio_image(source, target_height_ratio=layout.get('targetHeightRatio'),
                                          canvas_size=EXPORT_SIZE, style='photo')
@@ -140,7 +178,10 @@ def export_studio_photos(vehicle_id, read_mask, read_layout, save_object, progre
                             'qualityScore': view['quality'],
                             'file': filename, 'width': EXPORT_SIZE[0], 'height': EXPORT_SIZE[1],
                             'selectionAdjusted': source_index != uniform_indexes[number-1],
-                            'fallbackUsed': uniform_indexes[number-1] not in usable_indexes})
+                            'fallbackUsed': uniform_indexes[number-1] not in usable_indexes,
+                            'sourceDetail': detail_metadata['sourceDetail'],
+                            'detailPassUsed': detail_metadata.get('detailPassUsed', False),
+                            'sourceDetailFallback': detail_metadata.get('sourceDetailFallback')})
             if progress:
                 progress(number)
     manifest = {'vehicleId': vehicle_id, 'kind': 'studio-photos',

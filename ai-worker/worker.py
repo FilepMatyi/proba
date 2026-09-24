@@ -492,6 +492,25 @@ def handle_studio_export(fields):
             # have ordered masks and receive foreground-quality ranking.
             return {}
 
+    selection_metadata = read_selection()
+    by_viewer_frame = {item['viewerFrame']: item for item in selection_metadata.get('views', [])}
+
+    def read_source(index):
+        item = by_viewer_frame.get(index)
+        if not item:
+            return None  # Older sessions retain their usable stored cutout.
+        key = item.get('candidateKey')
+        if not key:
+            candidate_frame = item.get('candidateFrame')
+            if not isinstance(candidate_frame, int) or candidate_frame < 1:
+                return None
+            key = f'{vehicle_id}/candidates/frame-{candidate_frame:03d}.jpg'
+        return _download_bytes(RAW_BUCKET, key)
+
+    def predict_mask(image):
+        from processing.background_removal import _session
+        return _session.predict(image)[0]
+
     def save_object(key, data, content_type):
         minio_client.put_object(PROCESSED_BUCKET, key, io.BytesIO(data), len(data), content_type=content_type)
 
@@ -500,7 +519,9 @@ def handle_studio_export(fields):
         redis_client.expire(state_key, 7*24*3600)
 
     manifest = export_studio_photos(vehicle_id, read_mask, read_layout, save_object, progress,
-                                    frame_count=TARGET_FRAMES, read_selection=read_selection)
+                                    frame_count=TARGET_FRAMES,
+                                    read_selection=lambda: selection_metadata,
+                                    read_source=read_source, predict_mask=predict_mask)
     redis_client.hset(state_key, mapping={'status': 'ready', 'completed': manifest['count']})
     redis_client.expire(state_key, 7*24*3600)
 

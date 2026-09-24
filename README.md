@@ -150,9 +150,18 @@ docker compose run --rm ai-worker python recompose.py jarmu-azonosito
 ## 10 Studio Photos
 
 A dashboard külön akciójából vagy a `/studio-photos/:vehicleId` oldalon indítható;
-nem helyettesíti a 36 képes viewert. A worker a kész session átlátszó,
-expozíció-normalizált képeiből 10 körben elosztott, minőség szerint rangsorolt
-nézetet választ. Ha van megbízható szenzorirány, tényleges irányszektorokban
+nem helyettesíti a 36 képes viewert. A worker a kész session maszkjaiból 10
+körben elosztott, minőség szerint rangsorolt nézetet választ. Ha az eredeti
+candidate frame és a kiválasztási metadata rendelkezésre áll, a végleges
+fotóhoz azt külön, az eredeti frame-ből dolgozó BiRefNet soft-matte ágon
+újraszegmentálja:
+a fő járműhöz kapcsolódó vékony elemeket megtartja, az izolált háttérfoltokat
+kiszűri, és szükség esetén biztonságos ráhagyással kivágott részlet-passzt
+futtat. Ez az ág nem használja a `rembg` bináris morfológiai mask post-processét;
+a 360 viewer maszkjai változatlanok. Régi, forráskapcsolat nélküli sessionnél
+a tárolt maszk a biztonságos fallback. Az új matte a session már normalizált
+képének, szigorúan korlátozott luminancia-céljához igazodik, a karosszéria
+színárnyalatának módosítása nélkül. Ha van megbízható szenzorirány, tényleges irányszektorokban
 keres; egyébként a rendezett 36 képes kör szektoraiban. A COLMAP-kód a régi
 3D/splat ág része, a production viewerhez nem szolgáltat kamerametadata-t.
 Az export 3840 × 2160-as JPEG-eket, manifestet és ZIP-et ment a MinIO
@@ -160,8 +169,7 @@ Az export 3840 × 2160-as JPEG-eket, manifestet és ZIP-et ment a MinIO
 cyclorama hátteret, enyhén szürkés padlót, háromrétegű (ambient, karosszéria
 alatti és gumikontaktus) árnyékot és nagyon halvány, lefelé elmosódó
 padlóreflexiót kapnak. Ezek a fotó-export saját effektjei; a viewer
-megjelenítése változatlan. A forrásképek a meglévő expozíció-normalizálást és
-maszkél-tisztítást használják, a fotó-kompozíció pedig óvatosan visszafogja az
+megjelenítése változatlan. A fotó-kompozíció maszkél-tisztítást használ, és óvatosan visszafogja az
 erős kék üvegtükröződést és a kiégett csúcsfényeket. A maszkon becsült,
 keskeny vonóhorgot kiszűrő alsó érintkezési szint fix padlóvonalra kerül,
 eltolással és

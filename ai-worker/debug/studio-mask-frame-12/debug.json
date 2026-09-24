@@ -1,0 +1,45 @@
+{
+  "vehicle": "car-test-5-studio-photos-v3",
+  "sourceVehicle": "car-test-5-premium-v2",
+  "viewerFrame": 12,
+  "candidateKey": "car-test-5-premium-v2/candidates/frame-035.jpg",
+  "sourceMatches": [],
+  "sourceSize": [
+    1920,
+    1080
+  ],
+  "inferenceSize": [
+    1920,
+    1080
+  ],
+  "rawMaskSize": [
+    1920,
+    1080
+  ],
+  "retryUsed": false,
+  "rawNonzero": 535503,
+  "postprocessedNonzero": 531075,
+  "cleanedNonzero": 531075,
+  "studioDetail": {
+    "sourceSize": [
+      1920,
+      1080
+    ],
+    "detailPassUsed": true,
+    "cropRetried": false,
+    "softAlpha": true,
+    "bbox": [
+      305,
+      203,
+      1277,
+      913
+    ],
+    "detailCrop": [
+      207,
+      89,
+      1375,
+      984
+    ],
+    "detailAddedPixels": 201
+  }
+}

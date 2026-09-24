@@ -11,7 +11,8 @@ from PIL import Image, ImageDraw
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from processing.studio_export import export_studio_photos, select_quality_views, select_studio_indices
+from processing.studio_export import (_match_stored_exposure, export_studio_photos,
+                                      select_quality_views, select_studio_indices)
 from processing.studio_compose import create_studio_image, robust_ground_anchor, studio_placement
 from processing.studio_photo_look import cyclorama_template, floor_reflection, photo_shadow_layers
 
@@ -151,6 +152,38 @@ class StudioExportTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'Not enough usable masks'):
             export_studio_photos('car', lambda _: Image.new('RGBA', (400, 225)),
                                  lambda _: {}, lambda *_: None)
+
+    def test_original_frame_detail_branch_is_separate_and_falls_back_safely(self):
+        stored = {}
+        source = Image.new('RGBA', (400, 225))
+        ImageDraw.Draw(source).rectangle((20, 20, 380, 220), fill=(20, 80, 50, 255))
+        with patch('processing.studio_export.EXPORT_SIZE', (400, 225)), \
+             patch('processing.studio_export.segment_studio_source',
+                   return_value=(source, {'detailPassUsed': True})) as segment:
+            manifest = export_studio_photos(
+                'car', lambda _: source, lambda _: {},
+                lambda key, data, _: stored.__setitem__(key, data),
+                read_source=lambda _: b'original-jpeg', predict_mask=lambda _: None)
+        self.assertEqual(segment.call_count, 10)
+        self.assertTrue(all(item['sourceDetail'] == 'original-frame-soft-matte'
+                            and item['detailPassUsed'] for item in manifest['photos']))
+        self.assertEqual(len([key for key in stored if key.endswith('.jpg')]), 10)
+
+        with patch('processing.studio_export.EXPORT_SIZE', (400, 225)):
+            fallback = export_studio_photos(
+                'car', lambda _: source, lambda _: {}, lambda *_: None,
+                read_source=lambda _: (_ for _ in ()).throw(OSError('source missing')),
+                predict_mask=lambda _: None)
+        self.assertTrue(all(item['sourceDetail'] == 'stored-mask'
+                            and item['sourceDetailFallback'] for item in fallback['photos']))
+
+    def test_source_detail_inherits_session_exposure_without_changing_alpha(self):
+        detailed = Image.new('RGBA', (100, 80), (40, 90, 55, 180))
+        reference = Image.new('RGBA', (100, 80), (55, 110, 70, 180))
+        corrected = _match_stored_exposure(detailed, reference)
+        self.assertEqual(corrected.getchannel('A').tobytes(), detailed.getchannel('A').tobytes())
+        self.assertGreater(np.asarray(corrected)[:, :, :3].mean(),
+                           np.asarray(detailed)[:, :, :3].mean())
 
     def test_one_bad_mask_uses_nearest_valid_unreserved_frame(self):
         stored = {}
