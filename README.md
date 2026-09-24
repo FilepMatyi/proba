@@ -170,10 +170,16 @@ cyclorama hátteret, enyhén szürkés padlót, háromrétegű (ambient, karossz
 alatti és gumikontaktus) árnyékot és nagyon halvány, lefelé elmosódó
 padlóreflexiót kapnak. Ezek a fotó-export saját effektjei; a viewer
 megjelenítése változatlan. A fotó-kompozíció maszkél-tisztítást használ, és óvatosan visszafogja az
-erős kék üvegtükröződést és a kiégett csúcsfényeket. A maszkon becsült,
-keskeny vonóhorgot kiszűrő alsó érintkezési szint fix padlóvonalra kerül,
-eltolással és
-kerékpont-alapú forgatás nélkül. A 4K kimeneti méret
+erős kék üvegtükröződést és a kiégett csúcsfényeket. A külön fotóág a
+megbízható gumikontaktusokat használja talajhorgonyként (nem a vonóhorgot
+vagy a lökhárítót), fix 4K képmagassággal és padlóvonallal. A közeli és a
+távoli gumi eltérő képmagassága 3/4 perspektívában természetes; ezt nem
+egyenlíti ki erőltetett forgatással. Legfeljebb 2°-os roll korrekció csak
+közel tengelyirányú nézetben, egymást alátámasztó kerék- és karosszériavonal
+esetén engedélyezett. 3D rekonstrukció nélküli pitch-/perspektívatorzítást
+nem végez. Az árnyék és a halvány reflexió a végleges kontaktponthoz igazodik;
+a manifest `stance` mezője a döntéseket és a vászonpozíciót is rögzíti.
+A 4K kimeneti méret
 önmagában nem tudja visszaállítani az eredeti videóból hiányzó karc- vagy
 horpadásrészleteket.
 

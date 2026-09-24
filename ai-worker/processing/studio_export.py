@@ -161,9 +161,10 @@ def export_studio_photos(vehicle_id, read_mask, read_layout, save_object, progre
                 except Exception as error:
                     detail_metadata = {'sourceDetail': 'stored-mask',
                                        'sourceDetailFallback': str(error)[:160]}
-            layout = read_layout(source_index) or {}
-            studio = create_studio_image(source, target_height_ratio=layout.get('targetHeightRatio'),
-                                         canvas_size=EXPORT_SIZE, style='photo')
+            # read_layout remains in the callback API for old jobs, but the
+            # standalone photo template must not inherit viewer height jitter.
+            studio, pose = create_studio_image(source, canvas_size=EXPORT_SIZE,
+                                               style='photo', return_pose=True)
             output = io.BytesIO()
             studio.save(output, 'JPEG', quality=96, subsampling=0, optimize=True)
             data = output.getvalue()
@@ -181,7 +182,18 @@ def export_studio_photos(vehicle_id, read_mask, read_layout, save_object, progre
                             'fallbackUsed': uniform_indexes[number-1] not in usable_indexes,
                             'sourceDetail': detail_metadata['sourceDetail'],
                             'detailPassUsed': detail_metadata.get('detailPassUsed', False),
-                            'sourceDetailFallback': detail_metadata.get('sourceDetailFallback')})
+                            'sourceDetailFallback': detail_metadata.get('sourceDetailFallback'),
+                            'stance': {
+                                'viewType': pose['viewType'] if pose else 'empty',
+                                'groundAnchorSource': pose['groundAnchorSource'] if pose else 'empty',
+                                'appliedRollDegrees': round(pose['appliedRollDegrees'], 3) if pose else 0.,
+                                'wheelLineDegrees': (round(pose['wheelLineDegrees'], 3)
+                                                     if pose and pose['wheelLineDegrees'] is not None else None),
+                                'bodyLineDegrees': (round(pose['bodyLineDegrees'], 3)
+                                                    if pose and pose['bodyLineDegrees'] is not None else None),
+                                'pitchCorrectionDegrees': 0.,
+                                'canvas': pose.get('canvas') if pose else None,
+                            }})
             if progress:
                 progress(number)
     manifest = {'vehicleId': vehicle_id, 'kind': 'studio-photos',

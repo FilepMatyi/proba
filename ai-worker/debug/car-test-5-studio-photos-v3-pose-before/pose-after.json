@@ -1,0 +1,652 @@
+[
+  {
+    "photo": 1,
+    "viewType": "three-quarter",
+    "tireContacts": [
+      {
+        "x": 169.16666666666666,
+        "y": 596.6145833333334,
+        "radius": 138.65625,
+        "confidence": 0.530261475060395,
+        "prominence": 43.0,
+        "neutralDark": 0.7950120790109422,
+        "edgeDensity": 0.18026147506039505,
+        "upperNeutral": 0.7149509803921569
+      },
+      {
+        "x": 996.875,
+        "y": 756.71875,
+        "radius": 193.86197916666666,
+        "confidence": 0.4907713700234192,
+        "prominence": 88.0,
+        "neutralDark": 0.8997365339578455,
+        "edgeDensity": 0.1407713700234192,
+        "upperNeutral": 0.9359154929577465
+      }
+    ],
+    "silhouetteContacts": [
+      {
+        "x": 172.0,
+        "y": 598.0,
+        "radius": 139.4,
+        "confidence": 0.18,
+        "prominence": 65.0
+      },
+      {
+        "x": 996.0,
+        "y": 757.0,
+        "radius": 194.65,
+        "confidence": 0.18,
+        "prominence": 133.0
+      }
+    ],
+    "groundAnchorY": 756.71875,
+    "groundAnchorSource": "tires",
+    "supportedMaskAnchorY": 757,
+    "wheelLineDegrees": 10.947560625778367,
+    "bodyLineDegrees": -2.4540316745270756,
+    "bodyLineCount": 12,
+    "rollCorrectionDegrees": 0.0,
+    "rollReason": "perspective-or-insufficient-evidence",
+    "pitchCorrectionDegrees": 0.0,
+    "pitchReason": "not-observable-from-single-2d-view",
+    "appliedRollDegrees": 0.0,
+    "rollBeforeDegrees": 10.947560625778367,
+    "sourceSize": [
+      1450,
+      759
+    ],
+    "canvas": {
+      "x": 504,
+      "y": 406,
+      "width": 2831,
+      "height": 1482,
+      "groundY": 1884,
+      "contactY": [
+        1570.9,
+        1883.5
+      ]
+    }
+  },
+  {
+    "photo": 2,
+    "viewType": "three-quarter",
+    "tireContacts": [
+      {
+        "x": 90.4875,
+        "y": 511.96875,
+        "radius": 81.97453125,
+        "confidence": 0.5218164188752423,
+        "prominence": 28.0,
+        "neutralDark": 0.8361990950226245,
+        "edgeDensity": 0.1718164188752424,
+        "upperNeutral": 0.9053147574819401
+      },
+      {
+        "x": 545.30625,
+        "y": 764.38125,
+        "radius": 149.780625,
+        "confidence": 0.5106679884093335,
+        "prominence": 68.0,
+        "neutralDark": 0.8934344974836053,
+        "edgeDensity": 0.16066798840933352,
+        "upperNeutral": 0.8288515406162466
+      }
+    ],
+    "silhouetteContacts": [
+      {
+        "x": 91.0,
+        "y": 512.0,
+        "radius": 81.6,
+        "confidence": 0.18,
+        "prominence": 33.0
+      },
+      {
+        "x": 546.0,
+        "y": 764.0,
+        "radius": 150.45,
+        "confidence": 0.18,
+        "prominence": 81.0
+      }
+    ],
+    "groundAnchorY": 764.38125,
+    "groundAnchorSource": "tires",
+    "supportedMaskAnchorY": 764,
+    "wheelLineDegrees": 29.029127987144218,
+    "bodyLineDegrees": -2.3111314527614013,
+    "bodyLineCount": 4,
+    "rollCorrectionDegrees": 0.0,
+    "rollReason": "perspective-or-insufficient-evidence",
+    "pitchCorrectionDegrees": 0.0,
+    "pitchReason": "not-observable-from-single-2d-view",
+    "appliedRollDegrees": 0.0,
+    "rollBeforeDegrees": 29.029127987144218,
+    "sourceSize": [
+      1143,
+      767
+    ],
+    "canvas": {
+      "x": 816,
+      "y": 407,
+      "width": 2208,
+      "height": 1482,
+      "groundY": 1884,
+      "contactY": [
+        1396.2,
+        1883.9
+      ]
+    }
+  },
+  {
+    "photo": 3,
+    "viewType": "front-rear",
+    "tireContacts": [
+      {
+        "x": 178.0,
+        "y": 677.0,
+        "radius": 59.5,
+        "confidence": 0.4161115736885928,
+        "prominence": 10.0,
+        "neutralDark": 0.9660283097418818,
+        "edgeDensity": 0.06611157368859284,
+        "upperNeutral": 0.9991735537190083
+      },
+      {
+        "x": 474.0,
+        "y": 679.0,
+        "radius": 30.689999999999998,
+        "confidence": 0.6358407079646018,
+        "prominence": 49.0,
+        "neutralDark": 0.9991150442477876,
+        "edgeDensity": 0.28584070796460176,
+        "upperNeutral": 0.9983957219251337
+      }
+    ],
+    "silhouetteContacts": [
+      {
+        "x": 178.0,
+        "y": 677.0,
+        "radius": 59.5,
+        "confidence": 0.18,
+        "prominence": 10.0
+      },
+      {
+        "x": 474.0,
+        "y": 679.0,
+        "radius": 30.689999999999998,
+        "confidence": 0.18,
+        "prominence": 49.0
+      }
+    ],
+    "groundAnchorY": 678.0,
+    "groundAnchorSource": "tires",
+    "supportedMaskAnchorY": 677,
+    "wheelLineDegrees": 0.3871277541509513,
+    "bodyLineDegrees": -3.9793824526782045,
+    "bodyLineCount": 24,
+    "rollCorrectionDegrees": 0.0,
+    "rollReason": "perspective-or-insufficient-evidence",
+    "pitchCorrectionDegrees": 0.0,
+    "pitchReason": "not-observable-from-single-2d-view",
+    "appliedRollDegrees": 0.0,
+    "rollBeforeDegrees": 0.3871277541509513,
+    "sourceSize": [
+      745,
+      682
+    ],
+    "canvas": {
+      "x": 1110,
+      "y": 411,
+      "width": 1619,
+      "height": 1482,
+      "groundY": 1884,
+      "contactY": [
+        1882.1,
+        1886.5
+      ]
+    }
+  },
+  {
+    "photo": 4,
+    "viewType": "three-quarter",
+    "tireContacts": [
+      {
+        "x": 697.6125000000001,
+        "y": 701.6625,
+        "radius": 102.41437499999999,
+        "confidence": 0.4828974739970282,
+        "prominence": 38.0,
+        "neutralDark": 0.9466864784546806,
+        "edgeDensity": 0.13289747399702823,
+        "upperNeutral": 0.912468112244898
+      }
+    ],
+    "silhouetteContacts": [
+      {
+        "x": 440.0,
+        "y": 708.0,
+        "radius": 146.2,
+        "confidence": 0.18,
+        "prominence": 30.0
+      },
+      {
+        "x": 698.0,
+        "y": 702.0,
+        "radius": 102.0,
+        "confidence": 0.18,
+        "prominence": 39.0
+      }
+    ],
+    "groundAnchorY": 701.6625,
+    "groundAnchorSource": "tires",
+    "supportedMaskAnchorY": 707,
+    "wheelLineDegrees": null,
+    "bodyLineDegrees": -0.5354589855645338,
+    "bodyLineCount": 9,
+    "rollCorrectionDegrees": 0.0,
+    "rollReason": "perspective-or-insufficient-evidence",
+    "pitchCorrectionDegrees": 0.0,
+    "pitchReason": "not-observable-from-single-2d-view",
+    "appliedRollDegrees": 0.0,
+    "rollBeforeDegrees": null,
+    "sourceSize": [
+      972,
+      710
+    ],
+    "canvas": {
+      "x": 905,
+      "y": 419,
+      "width": 2029,
+      "height": 1482,
+      "groundY": 1884,
+      "contactY": [
+        1883.6
+      ]
+    }
+  },
+  {
+    "photo": 5,
+    "viewType": "three-quarter",
+    "tireContacts": [
+      {
+        "x": 560.1750000000001,
+        "y": 812.8312500000001,
+        "radius": 192.66843749999998,
+        "confidence": 0.4823032188260752,
+        "prominence": 67.0,
+        "neutralDark": 0.9899242629158778,
+        "edgeDensity": 0.1323032188260752,
+        "upperNeutral": 0.9807807807807808
+      },
+      {
+        "x": 1270.5,
+        "y": 532.74375,
+        "radius": 101.8565625,
+        "confidence": 0.5157987162407653,
+        "prominence": 31.0,
+        "neutralDark": 0.9811069395664285,
+        "edgeDensity": 0.16579871624076542,
+        "upperNeutral": 0.9783475783475784
+      }
+    ],
+    "silhouetteContacts": [
+      {
+        "x": 555.0,
+        "y": 814.0,
+        "radius": 192.95,
+        "confidence": 0.18,
+        "prominence": 98.0
+      },
+      {
+        "x": 1270.0,
+        "y": 533.0,
+        "radius": 101.14999999999999,
+        "confidence": 0.18,
+        "prominence": 44.0
+      }
+    ],
+    "groundAnchorY": 812.8312500000001,
+    "groundAnchorSource": "tires",
+    "supportedMaskAnchorY": 814,
+    "wheelLineDegrees": -21.519761153419612,
+    "bodyLineDegrees": -3.945186229037563,
+    "bodyLineCount": 4,
+    "rollCorrectionDegrees": 0.0,
+    "rollReason": "perspective-or-insufficient-evidence",
+    "pitchCorrectionDegrees": 0.0,
+    "pitchReason": "not-observable-from-single-2d-view",
+    "appliedRollDegrees": 0.0,
+    "rollBeforeDegrees": -21.519761153419612,
+    "sourceSize": [
+      1386,
+      816
+    ],
+    "canvas": {
+      "x": 661,
+      "y": 408,
+      "width": 2517,
+      "height": 1482,
+      "groundY": 1884,
+      "contactY": [
+        1884.2,
+        1375.6
+      ]
+    }
+  },
+  {
+    "photo": 6,
+    "viewType": "side",
+    "tireContacts": [
+      {
+        "x": 319.08958333333334,
+        "y": 679.2989583333333,
+        "radius": 177.47302083333332,
+        "confidence": 0.487609985676284,
+        "prominence": 70.0,
+        "neutralDark": 0.7089727849396358,
+        "edgeDensity": 0.13760998567628402,
+        "upperNeutral": 0.6358585858585859
+      },
+      {
+        "x": 1319.1229166666667,
+        "y": 638.1791666666667,
+        "radius": 164.97260416666666,
+        "confidence": 0.5143925011865211,
+        "prominence": 59.0,
+        "neutralDark": 0.9432249644043664,
+        "edgeDensity": 0.16439250118652113,
+        "upperNeutral": 0.9640151515151515
+      }
+    ],
+    "silhouetteContacts": [
+      {
+        "x": 322.0,
+        "y": 679.0,
+        "radius": 177.32,
+        "confidence": 0.18,
+        "prominence": 113.0
+      },
+      {
+        "x": 1318.0,
+        "y": 639.0,
+        "radius": 165.75,
+        "confidence": 0.18,
+        "prominence": 98.0
+      }
+    ],
+    "groundAnchorY": 679.2989583333333,
+    "groundAnchorSource": "tires",
+    "supportedMaskAnchorY": 679,
+    "wheelLineDegrees": -2.3545855990870788,
+    "bodyLineDegrees": 1.282527082710176,
+    "bodyLineCount": 16,
+    "rollCorrectionDegrees": 0.0,
+    "rollReason": "perspective-or-insufficient-evidence",
+    "pitchCorrectionDegrees": 0.0,
+    "pitchReason": "not-observable-from-single-2d-view",
+    "appliedRollDegrees": 0.0,
+    "rollBeforeDegrees": -2.3545855990870788,
+    "sourceSize": [
+      1579,
+      682
+    ],
+    "canvas": {
+      "x": 204,
+      "y": 408,
+      "width": 3431,
+      "height": 1482,
+      "groundY": 1884,
+      "contactY": [
+        1884.1,
+        1794.8
+      ]
+    }
+  },
+  {
+    "photo": 7,
+    "viewType": "three-quarter",
+    "tireContacts": [
+      {
+        "x": 137.22604166666667,
+        "y": 516.9291666666667,
+        "radius": 108.71499999999999,
+        "confidence": 0.4904514837065356,
+        "prominence": 38.0,
+        "neutralDark": 0.6518296013107592,
+        "edgeDensity": 0.1404514837065356,
+        "upperNeutral": 0.5478835978835979
+      },
+      {
+        "x": 819.359375,
+        "y": 708.7791666666667,
+        "radius": 175.52942708333333,
+        "confidence": 0.467460098113729,
+        "prominence": 53.0,
+        "neutralDark": 0.9052373384923651,
+        "edgeDensity": 0.11746009811372901,
+        "upperNeutral": 0.9695042400521853
+      }
+    ],
+    "silhouetteContacts": [
+      {
+        "x": 137.0,
+        "y": 517.0,
+        "radius": 109.64999999999999,
+        "confidence": 0.18,
+        "prominence": 50.0
+      },
+      {
+        "x": 815.0,
+        "y": 710.0,
+        "radius": 175.1,
+        "confidence": 0.18,
+        "prominence": 71.0
+      }
+    ],
+    "groundAnchorY": 708.7791666666667,
+    "groundAnchorSource": "tires",
+    "supportedMaskAnchorY": 710,
+    "wheelLineDegrees": 15.708637829015748,
+    "bodyLineDegrees": null,
+    "bodyLineCount": 1,
+    "rollCorrectionDegrees": 0.0,
+    "rollReason": "perspective-or-insufficient-evidence",
+    "pitchCorrectionDegrees": 0.0,
+    "pitchReason": "not-observable-from-single-2d-view",
+    "appliedRollDegrees": 0.0,
+    "rollBeforeDegrees": 15.708637829015748,
+    "sourceSize": [
+      1279,
+      712
+    ],
+    "canvas": {
+      "x": 589,
+      "y": 409,
+      "width": 2662,
+      "height": 1482,
+      "groundY": 1884,
+      "contactY": [
+        1485.0,
+        1884.3
+      ]
+    }
+  },
+  {
+    "photo": 8,
+    "viewType": "three-quarter",
+    "tireContacts": [
+      {
+        "x": 232.0,
+        "y": 646.0,
+        "radius": 82.45,
+        "confidence": 0.5040497617787189,
+        "prominence": 27.0,
+        "neutralDark": 0.9189165343215105,
+        "edgeDensity": 0.1540497617787189,
+        "upperNeutral": 0.884824414715719
+      }
+    ],
+    "silhouetteContacts": [
+      {
+        "x": 232.0,
+        "y": 646.0,
+        "radius": 82.45,
+        "confidence": 0.18,
+        "prominence": 27.0
+      },
+      {
+        "x": 452.0,
+        "y": 640.0,
+        "radius": 130.9,
+        "confidence": 0.18,
+        "prominence": 12.0
+      }
+    ],
+    "groundAnchorY": 646.0,
+    "groundAnchorSource": "tires",
+    "supportedMaskAnchorY": 645,
+    "wheelLineDegrees": null,
+    "bodyLineDegrees": -2.602562202499806,
+    "bodyLineCount": 9,
+    "rollCorrectionDegrees": 0.0,
+    "rollReason": "perspective-or-insufficient-evidence",
+    "pitchCorrectionDegrees": 0.0,
+    "pitchReason": "not-observable-from-single-2d-view",
+    "appliedRollDegrees": 0.0,
+    "rollBeforeDegrees": null,
+    "sourceSize": [
+      870,
+      648
+    ],
+    "canvas": {
+      "x": 925,
+      "y": 407,
+      "width": 1989,
+      "height": 1482,
+      "groundY": 1884,
+      "contactY": [
+        1884.4
+      ]
+    }
+  },
+  {
+    "photo": 9,
+    "viewType": "three-quarter",
+    "tireContacts": [
+      {
+        "x": 561.0,
+        "y": 743.0,
+        "radius": 113.05,
+        "confidence": 0.3996147776849531,
+        "prominence": 13.0,
+        "neutralDark": 0.8152325257588415,
+        "edgeDensity": 0.04961477768495312,
+        "upperNeutral": 0.9760582010582011
+      }
+    ],
+    "silhouetteContacts": [
+      {
+        "x": 561.0,
+        "y": 743.0,
+        "radius": 113.05,
+        "confidence": 0.18,
+        "prominence": 13.0
+      }
+    ],
+    "groundAnchorY": 743.0,
+    "groundAnchorSource": "tires",
+    "supportedMaskAnchorY": 743,
+    "wheelLineDegrees": null,
+    "bodyLineDegrees": 3.9182488640673765,
+    "bodyLineCount": 21,
+    "rollCorrectionDegrees": 0.0,
+    "rollReason": "perspective-or-insufficient-evidence",
+    "pitchCorrectionDegrees": 0.0,
+    "pitchReason": "not-observable-from-single-2d-view",
+    "appliedRollDegrees": 0.0,
+    "rollBeforeDegrees": null,
+    "sourceSize": [
+      864,
+      746
+    ],
+    "canvas": {
+      "x": 1062,
+      "y": 408,
+      "width": 1716,
+      "height": 1482,
+      "groundY": 1884,
+      "contactY": [
+        1884.0
+      ]
+    }
+  },
+  {
+    "photo": 10,
+    "viewType": "three-quarter",
+    "tireContacts": [
+      {
+        "x": 619.7447916666666,
+        "y": 824.5416666666666,
+        "radius": 153.59765625,
+        "confidence": 0.5356993784311057,
+        "prominence": 45.0,
+        "neutralDark": 0.8416587269180165,
+        "edgeDensity": 0.18569937843110568,
+        "upperNeutral": 0.7995854591836735
+      },
+      {
+        "x": 1177.9166666666667,
+        "y": 523.3697916666666,
+        "radius": 84.19427083333333,
+        "confidence": 0.5609756097560975,
+        "prominence": 24.0,
+        "neutralDark": 0.7870426829268292,
+        "edgeDensity": 0.21097560975609755,
+        "upperNeutral": 0.8087463556851312
+      }
+    ],
+    "silhouetteContacts": [
+      {
+        "x": 620.0,
+        "y": 825.0,
+        "radius": 153.0,
+        "confidence": 0.18,
+        "prominence": 60.0
+      },
+      {
+        "x": 1179.0,
+        "y": 524.0,
+        "radius": 85.0,
+        "confidence": 0.18,
+        "prominence": 33.0
+      }
+    ],
+    "groundAnchorY": 824.5416666666666,
+    "groundAnchorSource": "tires",
+    "supportedMaskAnchorY": 825,
+    "wheelLineDegrees": -28.349894501396957,
+    "bodyLineDegrees": 3.551733354820403,
+    "bodyLineCount": 4,
+    "rollCorrectionDegrees": 0.0,
+    "rollReason": "perspective-or-insufficient-evidence",
+    "pitchCorrectionDegrees": 0.0,
+    "pitchReason": "not-observable-from-single-2d-view",
+    "appliedRollDegrees": 0.0,
+    "rollBeforeDegrees": -28.349894501396957,
+    "sourceSize": [
+      1285,
+      828
+    ],
+    "canvas": {
+      "x": 770,
+      "y": 408,
+      "width": 2300,
+      "height": 1482,
+      "groundY": 1884,
+      "contactY": [
+        1883.8,
+        1344.8
+      ]
+    }
+  }
+]

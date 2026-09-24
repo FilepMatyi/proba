@@ -70,22 +70,31 @@ def photo_shadow_layers(canvas_size, vehicle_size, car_x, ground_y, contacts):
         return []
     size = (right - left, bottom - top)
     centre_x = car_x + width * .5 - left
-    centre_y = (float(np.median(contact_rows)) if contact_rows else ground_y) - top
+    centre_y = (float(np.median(contact_rows)) if len(contacts) >= 2 else ground_y) - top
+
+    def ground_strip(layer, thickness, color):
+        draw = ImageDraw.Draw(layer)
+        if len(contacts) >= 2:
+            ordered = sorted(contacts, key=lambda item: item['canvasX'])
+            start, end = ordered[0], ordered[-1]
+            # A diagonal footprint follows near/far tire perspective.  A
+            # horizontal ellipse halfway between them looked detached.
+            points = [(start['canvasX']-left, start['canvasY']-top),
+                      (end['canvasX']-left, end['canvasY']-top)]
+            radius = max(2, round(thickness/2))
+            draw.line(points, fill=color, width=max(2, round(thickness)))
+            for x, y in points:
+                draw.ellipse((x-radius, y-radius, x+radius, y+radius), fill=color)
+        else:
+            draw.ellipse((centre_x-width*.39, centre_y-thickness*.65,
+                          centre_x+width*.39, centre_y+thickness*.65), fill=color)
 
     ambient = Image.new('RGBA', size)
-    ImageDraw.Draw(ambient).ellipse(
-        (centre_x - width * .48, centre_y - height * .060,
-         centre_x + width * .48, centre_y + height * .060),
-        fill=(26, 28, 29, 24),
-    )
+    ground_strip(ambient, height*.09, (26, 28, 29, 24))
     ambient = ambient.filter(ImageFilter.GaussianBlur(radius=max(2., height * .035)))
 
     underbody = Image.new('RGBA', size)
-    ImageDraw.Draw(underbody).ellipse(
-        (centre_x - width * .39, centre_y - height * .028,
-         centre_x + width * .39, centre_y + height * .028),
-        fill=(17, 19, 20, 49),
-    )
+    ground_strip(underbody, height*.045, (17, 19, 20, 49))
     underbody = underbody.filter(ImageFilter.GaussianBlur(radius=max(2., height * .016)))
 
     contact = Image.new('RGBA', size)

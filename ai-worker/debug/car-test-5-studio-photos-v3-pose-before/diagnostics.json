@@ -1,0 +1,818 @@
+[
+  {
+    "photo": 1,
+    "sourceFrame": 1,
+    "targetAngle": 0.0,
+    "sourceKind": "resegmented-original",
+    "sourceBbox": [
+      96,
+      202,
+      1546,
+      961
+    ],
+    "cropSize": [
+      1450,
+      759
+    ],
+    "layoutTargetHeightRatio": 1.0044,
+    "silhouetteAnchor": 757,
+    "tireContacts": [
+      {
+        "x": 169.16666666666666,
+        "y": 596.6145833333334,
+        "radius": 138.65625,
+        "confidence": 0.5306877930936478,
+        "prominence": 43.0,
+        "neutralDark": 0.7950120790109422,
+        "edgeDensity": 0.18068779309364785,
+        "upperNeutral": 0.7149509803921569
+      },
+      {
+        "x": 996.875,
+        "y": 756.71875,
+        "radius": 193.86197916666666,
+        "confidence": 0.49088114754098355,
+        "prominence": 88.0,
+        "neutralDark": 0.8997365339578455,
+        "edgeDensity": 0.1408811475409836,
+        "upperNeutral": 0.9359154929577465
+      }
+    ],
+    "silhouetteContacts": [
+      {
+        "x": 172.0,
+        "y": 598.0,
+        "radius": 139.4,
+        "confidence": 0.18,
+        "prominence": 65.0
+      },
+      {
+        "x": 996.0,
+        "y": 757.0,
+        "radius": 194.65,
+        "confidence": 0.18,
+        "prominence": 133.0
+      }
+    ],
+    "wheelImageSlopeDegrees": 10.95,
+    "canvasGroundY": 1884,
+    "canvasCarY": 369,
+    "canvasNearestTireY": 1883.4,
+    "nearTireToGroundGapPx": 0.6,
+    "scale": 2.0013175230566533,
+    "detail": {
+      "sourceSize": [
+        1920,
+        1080
+      ],
+      "detailPassUsed": true,
+      "cropRetried": false,
+      "softAlpha": true,
+      "bbox": [
+        96,
+        202,
+        1546,
+        961
+      ],
+      "detailCrop": [
+        0,
+        80,
+        1691,
+        1037
+      ],
+      "detailAddedPixels": 370
+    }
+  },
+  {
+    "photo": 2,
+    "sourceFrame": 5,
+    "targetAngle": 36.0,
+    "sourceKind": "resegmented-original",
+    "sourceBbox": [
+      33,
+      204,
+      1176,
+      971
+    ],
+    "cropSize": [
+      1143,
+      767
+    ],
+    "layoutTargetHeightRatio": 0.98926,
+    "silhouetteAnchor": 764,
+    "tireContacts": [
+      {
+        "x": 90.4875,
+        "y": 511.96875,
+        "radius": 81.97453125,
+        "confidence": 0.5225921137685843,
+        "prominence": 28.0,
+        "neutralDark": 0.8361990950226245,
+        "edgeDensity": 0.17259211376858435,
+        "upperNeutral": 0.9053147574819401
+      },
+      {
+        "x": 545.30625,
+        "y": 764.38125,
+        "radius": 149.780625,
+        "confidence": 0.5110111331401556,
+        "prominence": 68.0,
+        "neutralDark": 0.8934344974836053,
+        "edgeDensity": 0.16101113314015555,
+        "upperNeutral": 0.8288515406162466
+      }
+    ],
+    "silhouetteContacts": [
+      {
+        "x": 91.0,
+        "y": 512.0,
+        "radius": 81.6,
+        "confidence": 0.18,
+        "prominence": 33.0
+      },
+      {
+        "x": 546.0,
+        "y": 764.0,
+        "radius": 150.45,
+        "confidence": 0.18,
+        "prominence": 81.0
+      }
+    ],
+    "wheelImageSlopeDegrees": 29.03,
+    "canvasGroundY": 1884,
+    "canvasCarY": 394,
+    "canvasNearestTireY": 1884.9,
+    "nearTireToGroundGapPx": -0.7,
+    "scale": 1.9504563233376793,
+    "detail": {
+      "sourceSize": [
+        1920,
+        1080
+      ],
+      "detailPassUsed": true,
+      "cropRetried": false,
+      "softAlpha": true,
+      "bbox": [
+        33,
+        204,
+        1176,
+        971
+      ],
+      "detailCrop": [
+        0,
+        81,
+        1291,
+        1048
+      ],
+      "detailAddedPixels": 360
+    }
+  },
+  {
+    "photo": 3,
+    "sourceFrame": 8,
+    "targetAngle": 72.0,
+    "sourceKind": "resegmented-original",
+    "sourceBbox": [
+      445,
+      211,
+      1190,
+      893
+    ],
+    "cropSize": [
+      745,
+      682
+    ],
+    "layoutTargetHeightRatio": 0.96926,
+    "silhouetteAnchor": 677,
+    "tireContacts": [
+      {
+        "x": 178.0,
+        "y": 677.0,
+        "radius": 59.5,
+        "confidence": 0.4157785179017485,
+        "prominence": 10.0,
+        "neutralDark": 0.9660283097418818,
+        "edgeDensity": 0.06577851790174855,
+        "upperNeutral": 0.9991735537190083
+      },
+      {
+        "x": 474.0,
+        "y": 679.0,
+        "radius": 30.689999999999998,
+        "confidence": 0.6402654867256636,
+        "prominence": 49.0,
+        "neutralDark": 0.9964601769911504,
+        "edgeDensity": 0.2902654867256637,
+        "upperNeutral": 0.9983957219251337
+      }
+    ],
+    "silhouetteContacts": [
+      {
+        "x": 178.0,
+        "y": 677.0,
+        "radius": 59.5,
+        "confidence": 0.18,
+        "prominence": 10.0
+      },
+      {
+        "x": 474.0,
+        "y": 679.0,
+        "radius": 30.689999999999998,
+        "confidence": 0.18,
+        "prominence": 49.0
+      }
+    ],
+    "wheelImageSlopeDegrees": 0.39,
+    "canvasGroundY": 1884,
+    "canvasCarY": 429,
+    "canvasNearestTireY": 1888.6,
+    "nearTireToGroundGapPx": -4.3,
+    "scale": 2.1495601173020527,
+    "detail": {
+      "sourceSize": [
+        1920,
+        1080
+      ],
+      "detailPassUsed": true,
+      "cropRetried": false,
+      "softAlpha": true,
+      "bbox": [
+        445,
+        211,
+        1190,
+        893
+      ],
+      "detailCrop": [
+        370,
+        101,
+        1265,
+        962
+      ],
+      "detailAddedPixels": 953
+    }
+  },
+  {
+    "photo": 4,
+    "sourceFrame": 12,
+    "targetAngle": 108.0,
+    "sourceKind": "resegmented-original",
+    "sourceBbox": [
+      305,
+      203,
+      1277,
+      913
+    ],
+    "cropSize": [
+      972,
+      710
+    ],
+    "layoutTargetHeightRatio": 0.97081,
+    "silhouetteAnchor": 707,
+    "tireContacts": [
+      {
+        "x": 697.6125000000001,
+        "y": 701.6625,
+        "radius": 102.41437499999999,
+        "confidence": 0.4831352154531946,
+        "prominence": 38.0,
+        "neutralDark": 0.9466864784546806,
+        "edgeDensity": 0.13313521545319465,
+        "upperNeutral": 0.912468112244898
+      },
+      {
+        "x": 934.5375,
+        "y": 411.07500000000005,
+        "radius": 34.425000000000004,
+        "confidence": 0.4824503311258278,
+        "prominence": 6.0,
+        "neutralDark": 0.9959246051961284,
+        "edgeDensity": 0.13245033112582782,
+        "upperNeutral": 0.9981203007518797
+      }
+    ],
+    "silhouetteContacts": [
+      {
+        "x": 440.0,
+        "y": 708.0,
+        "radius": 146.2,
+        "confidence": 0.18,
+        "prominence": 30.0
+      },
+      {
+        "x": 698.0,
+        "y": 702.0,
+        "radius": 102.0,
+        "confidence": 0.18,
+        "prominence": 39.0
+      }
+    ],
+    "wheelImageSlopeDegrees": -50.81,
+    "canvasGroundY": 1884,
+    "canvasCarY": 422,
+    "canvasNearestTireY": 1872.8,
+    "nearTireToGroundGapPx": 11.0,
+    "scale": 2.067605633802817,
+    "detail": {
+      "sourceSize": [
+        1920,
+        1080
+      ],
+      "detailPassUsed": true,
+      "cropRetried": false,
+      "softAlpha": true,
+      "bbox": [
+        305,
+        203,
+        1277,
+        913
+      ],
+      "detailCrop": [
+        207,
+        89,
+        1375,
+        984
+      ],
+      "detailAddedPixels": 201
+    }
+  },
+  {
+    "photo": 5,
+    "sourceFrame": 15,
+    "targetAngle": 144.0,
+    "sourceKind": "resegmented-original",
+    "sourceBbox": [
+      211,
+      191,
+      1597,
+      1007
+    ],
+    "cropSize": [
+      1386,
+      816
+    ],
+    "layoutTargetHeightRatio": 0.99266,
+    "silhouetteAnchor": 814,
+    "tireContacts": [
+      {
+        "x": 560.1750000000001,
+        "y": 812.8312500000001,
+        "radius": 192.66843749999998,
+        "confidence": 0.48274276440357045,
+        "prominence": 67.0,
+        "neutralDark": 0.9899242629158778,
+        "edgeDensity": 0.13274276440357047,
+        "upperNeutral": 0.9807807807807808
+      },
+      {
+        "x": 1270.5,
+        "y": 532.74375,
+        "radius": 101.8565625,
+        "confidence": 0.5162831536877801,
+        "prominence": 31.0,
+        "neutralDark": 0.9811069395664285,
+        "edgeDensity": 0.16628315368778007,
+        "upperNeutral": 0.9783475783475784
+      }
+    ],
+    "silhouetteContacts": [
+      {
+        "x": 555.0,
+        "y": 814.0,
+        "radius": 192.95,
+        "confidence": 0.18,
+        "prominence": 98.0
+      },
+      {
+        "x": 1270.0,
+        "y": 533.0,
+        "radius": 101.14999999999999,
+        "confidence": 0.18,
+        "prominence": 44.0
+      }
+    ],
+    "wheelImageSlopeDegrees": -21.52,
+    "canvasGroundY": 1884,
+    "canvasCarY": 387,
+    "canvasNearestTireY": 1882.2,
+    "nearTireToGroundGapPx": 2.1,
+    "scale": 1.8394607843137254,
+    "detail": {
+      "sourceSize": [
+        1920,
+        1080
+      ],
+      "detailPassUsed": true,
+      "cropRetried": false,
+      "softAlpha": true,
+      "bbox": [
+        211,
+        191,
+        1597,
+        1007
+      ],
+      "detailCrop": [
+        72,
+        60,
+        1736,
+        1080
+      ],
+      "detailAddedPixels": 2154
+    }
+  },
+  {
+    "photo": 6,
+    "sourceFrame": 19,
+    "targetAngle": 180.0,
+    "sourceKind": "resegmented-original",
+    "sourceBbox": [
+      9,
+      217,
+      1588,
+      899
+    ],
+    "cropSize": [
+      1579,
+      682
+    ],
+    "layoutTargetHeightRatio": 0.95166,
+    "silhouetteAnchor": 679,
+    "tireContacts": [
+      {
+        "x": 319.08958333333334,
+        "y": 679.2989583333333,
+        "radius": 177.47302083333332,
+        "confidence": 0.487609985676284,
+        "prominence": 70.0,
+        "neutralDark": 0.7089727849396358,
+        "edgeDensity": 0.13760998567628402,
+        "upperNeutral": 0.6358585858585859
+      },
+      {
+        "x": 1319.1229166666667,
+        "y": 638.1791666666667,
+        "radius": 164.97260416666666,
+        "confidence": 0.5142738490745136,
+        "prominence": 59.0,
+        "neutralDark": 0.9432249644043664,
+        "edgeDensity": 0.16427384907451353,
+        "upperNeutral": 0.9640151515151515
+      }
+    ],
+    "silhouetteContacts": [
+      {
+        "x": 322.0,
+        "y": 679.0,
+        "radius": 177.32,
+        "confidence": 0.18,
+        "prominence": 113.0
+      },
+      {
+        "x": 1318.0,
+        "y": 639.0,
+        "radius": 165.75,
+        "confidence": 0.18,
+        "prominence": 98.0
+      }
+    ],
+    "wheelImageSlopeDegrees": -2.35,
+    "canvasGroundY": 1884,
+    "canvasCarY": 451,
+    "canvasNearestTireY": 1884.3,
+    "nearTireToGroundGapPx": -0.6,
+    "scale": 2.1099706744868034,
+    "detail": {
+      "sourceSize": [
+        1920,
+        1080
+      ],
+      "detailPassUsed": false,
+      "cropRetried": true,
+      "softAlpha": true,
+      "bbox": [
+        9,
+        217,
+        1588,
+        899
+      ]
+    }
+  },
+  {
+    "photo": 7,
+    "sourceFrame": 23,
+    "targetAngle": 216.0,
+    "sourceKind": "resegmented-original",
+    "sourceBbox": [
+      229,
+      146,
+      1508,
+      858
+    ],
+    "cropSize": [
+      1279,
+      712
+    ],
+    "layoutTargetHeightRatio": 0.94188,
+    "silhouetteAnchor": 710,
+    "tireContacts": [
+      {
+        "x": 137.22604166666667,
+        "y": 516.9291666666667,
+        "radius": 108.71499999999999,
+        "confidence": 0.4910886582923721,
+        "prominence": 38.0,
+        "neutralDark": 0.6518296013107592,
+        "edgeDensity": 0.1410886582923721,
+        "upperNeutral": 0.5478835978835979
+      },
+      {
+        "x": 819.359375,
+        "y": 708.7791666666667,
+        "radius": 175.52942708333333,
+        "confidence": 0.46773647481517305,
+        "prominence": 53.0,
+        "neutralDark": 0.9052373384923651,
+        "edgeDensity": 0.11773647481517308,
+        "upperNeutral": 0.9695042400521853
+      }
+    ],
+    "silhouetteContacts": [
+      {
+        "x": 137.0,
+        "y": 517.0,
+        "radius": 109.64999999999999,
+        "confidence": 0.18,
+        "prominence": 50.0
+      },
+      {
+        "x": 815.0,
+        "y": 710.0,
+        "radius": 175.1,
+        "confidence": 0.18,
+        "prominence": 71.0
+      }
+    ],
+    "wheelImageSlopeDegrees": 15.71,
+    "canvasGroundY": 1884,
+    "canvasCarY": 464,
+    "canvasNearestTireY": 1881.6,
+    "nearTireToGroundGapPx": 2.4,
+    "scale": 2.0,
+    "detail": {
+      "sourceSize": [
+        1920,
+        1080
+      ],
+      "detailPassUsed": true,
+      "cropRetried": false,
+      "softAlpha": true,
+      "bbox": [
+        229,
+        146,
+        1508,
+        858
+      ],
+      "detailCrop": [
+        101,
+        32,
+        1636,
+        930
+      ],
+      "detailAddedPixels": 2580
+    }
+  },
+  {
+    "photo": 8,
+    "sourceFrame": 26,
+    "targetAngle": 252.0,
+    "sourceKind": "resegmented-original",
+    "sourceBbox": [
+      584,
+      186,
+      1454,
+      834
+    ],
+    "cropSize": [
+      870,
+      648
+    ],
+    "layoutTargetHeightRatio": 0.93863,
+    "silhouetteAnchor": 645,
+    "tireContacts": [
+      {
+        "x": 48.0,
+        "y": 398.0,
+        "radius": 37.4,
+        "confidence": 0.48327745180217935,
+        "prominence": 4.0,
+        "neutralDark": 0.8302598491198658,
+        "edgeDensity": 0.13327745180217937,
+        "upperNeutral": 0.9885531135531136
+      },
+      {
+        "x": 232.0,
+        "y": 646.0,
+        "radius": 82.45,
+        "confidence": 0.5057261337568378,
+        "prominence": 27.0,
+        "neutralDark": 0.9189165343215105,
+        "edgeDensity": 0.15572613375683783,
+        "upperNeutral": 0.884824414715719
+      }
+    ],
+    "silhouetteContacts": [
+      {
+        "x": 232.0,
+        "y": 646.0,
+        "radius": 82.45,
+        "confidence": 0.18,
+        "prominence": 27.0
+      },
+      {
+        "x": 452.0,
+        "y": 640.0,
+        "radius": 130.9,
+        "confidence": 0.18,
+        "prominence": 12.0
+      }
+    ],
+    "wheelImageSlopeDegrees": 53.43,
+    "canvasGroundY": 1884,
+    "canvasCarY": 472,
+    "canvasNearestTireY": 1886.6,
+    "nearTireToGroundGapPx": -2.2,
+    "scale": 2.189814814814815,
+    "detail": {
+      "sourceSize": [
+        1920,
+        1080
+      ],
+      "detailPassUsed": true,
+      "cropRetried": false,
+      "softAlpha": true,
+      "bbox": [
+        584,
+        186,
+        1454,
+        834
+      ],
+      "detailCrop": [
+        497,
+        82,
+        1541,
+        899
+      ],
+      "detailAddedPixels": 139
+    }
+  },
+  {
+    "photo": 9,
+    "sourceFrame": 30,
+    "targetAngle": 288.0,
+    "sourceKind": "resegmented-original",
+    "sourceBbox": [
+      620,
+      181,
+      1484,
+      927
+    ],
+    "cropSize": [
+      864,
+      746
+    ],
+    "layoutTargetHeightRatio": 0.9758,
+    "silhouetteAnchor": 743,
+    "tireContacts": [
+      {
+        "x": 561.0,
+        "y": 743.0,
+        "radius": 113.05,
+        "confidence": 0.3996147776849531,
+        "prominence": 13.0,
+        "neutralDark": 0.8152325257588415,
+        "edgeDensity": 0.04961477768495312,
+        "upperNeutral": 0.9760582010582011
+      }
+    ],
+    "silhouetteContacts": [
+      {
+        "x": 561.0,
+        "y": 743.0,
+        "radius": 113.05,
+        "confidence": 0.18,
+        "prominence": 13.0
+      }
+    ],
+    "wheelImageSlopeDegrees": null,
+    "canvasGroundY": 1884,
+    "canvasCarY": 415,
+    "canvasNearestTireY": 1884.1,
+    "nearTireToGroundGapPx": 0.0,
+    "scale": 1.977211796246649,
+    "detail": {
+      "sourceSize": [
+        1920,
+        1080
+      ],
+      "detailPassUsed": true,
+      "cropRetried": false,
+      "softAlpha": true,
+      "bbox": [
+        620,
+        181,
+        1484,
+        927
+      ],
+      "detailCrop": [
+        533,
+        61,
+        1571,
+        1002
+      ],
+      "detailAddedPixels": 433
+    }
+  },
+  {
+    "photo": 10,
+    "sourceFrame": 33,
+    "targetAngle": 324.0,
+    "sourceKind": "resegmented-original",
+    "sourceBbox": [
+      433,
+      141,
+      1718,
+      969
+    ],
+    "cropSize": [
+      1285,
+      828
+    ],
+    "layoutTargetHeightRatio": 0.9997,
+    "silhouetteAnchor": 825,
+    "tireContacts": [
+      {
+        "x": 619.7447916666666,
+        "y": 824.5416666666666,
+        "radius": 153.59765625,
+        "confidence": 0.5357447484233928,
+        "prominence": 45.0,
+        "neutralDark": 0.8416587269180165,
+        "edgeDensity": 0.18574474842339278,
+        "upperNeutral": 0.7995854591836735
+      },
+      {
+        "x": 1177.9166666666667,
+        "y": 523.3697916666666,
+        "radius": 84.19427083333333,
+        "confidence": 0.5614329268292683,
+        "prominence": 24.0,
+        "neutralDark": 0.7870426829268292,
+        "edgeDensity": 0.2114329268292683,
+        "upperNeutral": 0.8087463556851312
+      }
+    ],
+    "silhouetteContacts": [
+      {
+        "x": 620.0,
+        "y": 825.0,
+        "radius": 153.0,
+        "confidence": 0.18,
+        "prominence": 60.0
+      },
+      {
+        "x": 1179.0,
+        "y": 524.0,
+        "radius": 85.0,
+        "confidence": 0.18,
+        "prominence": 33.0
+      }
+    ],
+    "wheelImageSlopeDegrees": -28.35,
+    "canvasGroundY": 1884,
+    "canvasCarY": 377,
+    "canvasNearestTireY": 1882.7,
+    "nearTireToGroundGapPx": 0.8,
+    "scale": 1.826086956521739,
+    "detail": {
+      "sourceSize": [
+        1920,
+        1080
+      ],
+      "detailPassUsed": true,
+      "cropRetried": false,
+      "softAlpha": true,
+      "bbox": [
+        433,
+        141,
+        1718,
+        969
+      ],
+      "detailCrop": [
+        304,
+        8,
+        1847,
+        1052
+      ],
+      "detailAddedPixels": 481
+    }
+  }
+]

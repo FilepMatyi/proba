@@ -592,14 +592,15 @@ def _draw_reflection(
 # ═══════════════════════════════════════════════════════════════════════
 
 def create_studio_image(vehicle_image, global_max_h=None, target_height_ratio=None,
-                        canvas_size=None, style='viewer'):
+                        canvas_size=None, style='viewer', return_pose=False):
     """
     Place vehicle onto the selected studio background.
 
     The mask bounding box controls horizontal framing. A robust lower mask
-    anchor is translated to the fixed floor level; the vehicle is never
-    rotated, sheared or warped from wheel positions. The 10-photo export has
-    its own floor treatment; the viewer retains its turntable appearance.
+    anchor is translated to the fixed floor level. The viewer never rotates,
+    shears or warps the vehicle from wheel positions. The separate 10-photo
+    export has its own tire-ground placement and permits only a small roll
+    correction corroborated by an independent body-line measurement.
 
     Args:
         vehicle_image: PIL RGBA Image with transparent background
@@ -624,24 +625,39 @@ def create_studio_image(vehicle_image, global_max_h=None, target_height_ratio=No
 
     cw, ch = canvas_size or (CANVAS_W, CANVAS_H)
 
-    # The final composition uses only a supported lower mask level and a fixed
-    # studio floor. It never rotates or shears the vehicle from wheel points.
+    # The 360 viewer retains its existing translation-only geometry.  The
+    # separate photo export uses a conservative, tire-based studio pose.
+    pose = None
+    if style == 'photo':
+        from processing.studio_pose import (analyze_photo_pose, normalize_photo_pose,
+                                            photo_placement)
+        vehicle_image, pose = normalize_photo_pose(vehicle_image)
+        vehicle_image = vehicle_image.crop(vehicle_image.getbbox() or (0, 0, 1, 1))
+        if pose['appliedRollDegrees']:
+            vehicle_image = decontaminate_mask_edges(vehicle_image)
+            updated = analyze_photo_pose(vehicle_image)
+            updated['appliedRollDegrees'] = pose['appliedRollDegrees']
+            updated['rollBeforeDegrees'] = pose['rollBeforeDegrees']
+            pose = updated
     source_alpha = np.asarray(vehicle_image.getchannel('A'))
-    anchor = robust_ground_anchor(source_alpha)
+    anchor = (pose['groundAnchorY'] if style == 'photo'
+              else robust_ground_anchor(source_alpha))
     if anchor is None:
         canvas = (_cyclorama_template(cw, ch).copy() if style == 'photo'
                   else _make_background(cw, ch, _platform_geometry(cw, ch)['top_y']))
         if style == 'viewer':
             _draw_turntable(canvas, cw, ch)
-        return canvas
-    source_contacts = tire_contacts(vehicle_image)
-    # Tire detections control shadow placement only: switching between a
-    # confident and an occluded wheel must not move the car between frames.
-    dimensions, (car_x, car_y), ground_y = studio_placement(
-        vehicle_image.size, anchor, (cw, ch),
-        1. if target_height_ratio is None else target_height_ratio,
-        fill_ratio=.70 if style == 'photo' else CAR_HEIGHT_FILL,
-    )
+        return (canvas, pose) if return_pose else canvas
+    source_contacts = pose['tireContacts'] if style == 'photo' else tire_contacts(vehicle_image)
+    if style == 'photo':
+        dimensions, (car_x, car_y), ground_y = photo_placement(
+            vehicle_image.size, anchor, (cw, ch))
+    else:
+        dimensions, (car_x, car_y), ground_y = studio_placement(
+            vehicle_image.size, anchor, (cw, ch),
+            1. if target_height_ratio is None else target_height_ratio,
+            fill_ratio=CAR_HEIGHT_FILL,
+        )
     vehicle_scaled = _enhance_vehicle_detail(vehicle_image.resize(dimensions, Image.Resampling.LANCZOS))
     vehicle_scaled = _harmonize_vehicle_color(vehicle_scaled, 1. if style == 'photo' else .55)
     platform = _platform_geometry(cw, ch)
@@ -656,6 +672,10 @@ def create_studio_image(vehicle_image, global_max_h=None, target_height_ratio=No
     anchors = [{'canvasX': car_x+item['x']*scale_x, 'canvasY': car_y+item['y']*scale_y,
                 'radius': item['radius']*scale_x} for item in source_contacts]
     if style == 'photo':
+        pose['sourceSize'] = list(vehicle_image.size)
+        pose['canvas'] = {'x': car_x, 'y': car_y, 'width': dimensions[0],
+                          'height': dimensions[1], 'groundY': ground_y,
+                          'contactY': [round(item['canvasY'], 1) for item in anchors]}
         reflection = floor_reflection(vehicle_scaled, ground_y-car_y, ch-ground_y)
         canvas.paste(reflection, (car_x, ground_y), reflection)
         for shadow_layer, location in photo_shadow_layers((cw, ch), dimensions,
@@ -676,4 +696,4 @@ def create_studio_image(vehicle_image, global_max_h=None, target_height_ratio=No
         shadow = shadow.filter(ImageFilter.GaussianBlur(radius=max(6, round(ch*.012))))
         canvas.paste(shadow, (0, 0), shadow)
     canvas.paste(vehicle_scaled, (car_x, car_y), vehicle_scaled)
-    return canvas
+    return (canvas, pose) if return_pose else canvas
