@@ -1,0 +1,2247 @@
+{
+  "selectionMethod": "sequence_fallback",
+  "weights": {
+    "angle": 0.1,
+    "sharpness": 0.22,
+    "exposure": 0.07,
+    "segmentation": 0.08,
+    "viewpoint": 0.23,
+    "perspective": 0.14,
+    "framing": 0.1,
+    "resolution": 0.06
+  },
+  "proxyFramesMeasured": 50,
+  "candidateFrames": 108,
+  "targets": [
+    {
+      "slot": 0,
+      "targetAngle": 0.0,
+      "viewType": "three-quarter",
+      "halfWindow": 26.0,
+      "selectedFrame": 1,
+      "topCandidates": [
+        {
+          "index": 1,
+          "key": "car-test-5-premium-v2/candidates/frame-001.jpg",
+          "selectionAngle": 0.0,
+          "angleError": 0.0,
+          "preliminaryScore": 0.7887441351438669,
+          "slot": 0,
+          "totalScore": 0.8237,
+          "components": {
+            "angle": 1.0,
+            "sharpness": 0.6791271341148261,
+            "exposure": 0.49267193987701774,
+            "segmentation": 1.0,
+            "viewpoint": 0.7969039189541282,
+            "perspective": 0.8968498168498168,
+            "framing": 0.9312168515945553,
+            "resolution": 0.8847058823529412
+          },
+          "measurements": {
+            "vehicleSize": 0.8733333333333333,
+            "blurRisk": 0.0,
+            "clippingRisk": 0.05092592592592587,
+            "apparentPitchQuality": 0.7134504268395482,
+            "upperSurfaceRatio": 0.777,
+            "contactSpreadRatio": 0.21,
+            "wheelSizeRatio": 1.356,
+            "measuredViewType": "three-quarter",
+            "sourceVehicleWidthPx": 1504,
+            "sourceSize": [
+              1920,
+              1080
+            ],
+            "proxyBbox": [
+              41,
+              97,
+              793,
+              487
+            ],
+            "tireContactCount": 2
+          },
+          "selectionMethod": "sequence_fallback",
+          "targetAngle": 0.0,
+          "angleSource": "sequence_fallback",
+          "quality": 82.37,
+          "selectionConfidence": "high"
+        },
+        {
+          "index": 2,
+          "key": "car-test-5-premium-v2/candidates/frame-002.jpg",
+          "selectionAngle": 3.3333333333333335,
+          "angleError": 3.333333333333343,
+          "preliminaryScore": 0.7404301975077905,
+          "slot": 0,
+          "totalScore": 0.8208,
+          "components": {
+            "angle": 0.8717948717948714,
+            "sharpness": 0.6643367749794672,
+            "exposure": 0.5196510234461512,
+            "segmentation": 1.0,
+            "viewpoint": 0.8062166184331133,
+            "perspective": 0.9015022091310751,
+            "framing": 0.9705965924068923,
+            "resolution": 0.8811764705882353
+          },
+          "measurements": {
+            "vehicleSize": 0.8795833333333334,
+            "blurRisk": 0.0,
+            "clippingRisk": 0.0,
+            "apparentPitchQuality": 0.7265440744822189,
+            "upperSurfaceRatio": 0.774,
+            "contactSpreadRatio": 0.206,
+            "wheelSizeRatio": 1.334,
+            "measuredViewType": "three-quarter",
+            "sourceVehicleWidthPx": 1498,
+            "sourceSize": [
+              1920,
+              1080
+            ],
+            "proxyBbox": [
+              47,
+              97,
+              796,
+              485
+            ],
+            "tireContactCount": 2
+          },
+          "selectionMethod": "sequence_fallback"
+        },
+        {
+          "index": 3,
+          "key": "car-test-5-premium-v2/candidates/frame-003.jpg",
+          "selectionAngle": 6.666666666666667,
+          "angleError": 6.666666666666657,
+          "preliminaryScore": 0.7246280974001029,
+          "slot": 0,
+          "totalScore": 0.8104,
+          "components": {
+            "angle": 0.743589743589744,
+            "sharpness": 0.6777389784749976,
+            "exposure": 0.510456002832619,
+            "segmentation": 1.0,
+            "viewpoint": 0.8068990980730726,
+            "perspective": 0.9026345083487941,
+            "framing": 0.9698713094002326,
+            "resolution": 0.8729411764705882
+          },
+          "measurements": {
+            "vehicleSize": 0.8941666666666666,
+            "blurRisk": 0.0,
+            "clippingRisk": 0.0,
+            "apparentPitchQuality": 0.7279707562592993,
+            "upperSurfaceRatio": 0.775,
+            "contactSpreadRatio": 0.205,
+            "wheelSizeRatio": 1.385,
+            "measuredViewType": "three-quarter",
+            "sourceVehicleWidthPx": 1484,
+            "sourceSize": [
+              1920,
+              1080
+            ],
+            "proxyBbox": [
+              49,
+              98,
+              791,
+              483
+            ],
+            "tireContactCount": 2
+          },
+          "selectionMethod": "sequence_fallback"
+        },
+        {
+          "index": 4,
+          "key": "car-test-5-premium-v2/candidates/frame-004.jpg",
+          "selectionAngle": 10.0,
+          "angleError": 10.0,
+          "preliminaryScore": 0.6927500489492389,
+          "slot": 0,
+          "totalScore": 0.7897,
+          "components": {
+            "angle": 0.6153846153846154,
+            "sharpness": 0.673862796020373,
+            "exposure": 0.49291640956660665,
+            "segmentation": 1.0,
+            "viewpoint": 0.7881104936253678,
+            "perspective": 0.8965413533834586,
+            "framing": 0.9666982759826032,
+            "resolution": 0.8529411764705882
+          },
+          "measurements": {
+            "vehicleSize": 0.9295833333333332,
+            "blurRisk": 0.0,
+            "clippingRisk": 0.0,
+            "apparentPitchQuality": 0.7034978751225891,
+            "upperSurfaceRatio": 0.786,
+            "contactSpreadRatio": 0.211,
+            "wheelSizeRatio": 1.42,
+            "measuredViewType": "three-quarter",
+            "sourceVehicleWidthPx": 1450,
+            "sourceSize": [
+              1920,
+              1080
+            ],
+            "proxyBbox": [
+              48,
+              101,
+              773,
+              481
+            ],
+            "tireContactCount": 2
+          },
+          "selectionMethod": "sequence_fallback"
+        },
+        {
+          "index": 106,
+          "key": "car-test-5-premium-v2/candidates/frame-106.jpg",
+          "selectionAngle": 350.0,
+          "angleError": 10.0,
+          "preliminaryScore": 0.651360205413577,
+          "slot": 0,
+          "totalScore": 0.7222,
+          "components": {
+            "angle": 0.6153846153846154,
+            "sharpness": 0.6206512321198365,
+            "exposure": 0.5795044790773661,
+            "segmentation": 1.0,
+            "viewpoint": 0.8366063348416289,
+            "perspective": 0.8863348416289593,
+            "framing": 0.6504717689272089,
+            "resolution": 1.0
+          },
+          "measurements": {
+            "vehicleSize": 0.5795833333333333,
+            "blurRisk": 0.0,
+            "clippingRisk": 0.4444444444444444,
+            "apparentPitchQuality": 0.7513574660633484,
+            "upperSurfaceRatio": 0.638,
+            "contactSpreadRatio": 0.219,
+            "wheelSizeRatio": 1.339,
+            "measuredViewType": "three-quarter",
+            "sourceVehicleWidthPx": 1786,
+            "sourceSize": [
+              1920,
+              1080
+            ],
+            "proxyBbox": [
+              43,
+              71,
+              936,
+              513
+            ],
+            "tireContactCount": 2
+          },
+          "selectionMethod": "sequence_fallback"
+        }
+      ]
+    },
+    {
+      "slot": 1,
+      "targetAngle": 36.0,
+      "viewType": "three-quarter",
+      "halfWindow": 26.0,
+      "selectedFrame": 13,
+      "topCandidates": [
+        {
+          "index": 13,
+          "key": "car-test-5-premium-v2/candidates/frame-013.jpg",
+          "selectionAngle": 40.0,
+          "angleError": 4.0,
+          "preliminaryScore": 0.7911742747869477,
+          "slot": 1,
+          "totalScore": 0.6559,
+          "components": {
+            "angle": 0.8461538461538461,
+            "sharpness": 0.7570493245694329,
+            "exposure": 0.48519440417767595,
+            "segmentation": 1.0,
+            "viewpoint": 0.4919985339018387,
+            "perspective": 0.6189738234475077,
+            "framing": 0.7027939449790361,
+            "resolution": 0.6870588235294117
+          },
+          "measurements": {
+            "vehicleSize": 0.7766666666666666,
+            "blurRisk": 0.0,
+            "clippingRisk": 0.3055555555555555,
+            "apparentPitchQuality": 0.3016984545442319,
+            "upperSurfaceRatio": 0.909,
+            "contactSpreadRatio": 0.318,
+            "wheelSizeRatio": 1.854,
+            "measuredViewType": "three-quarter",
+            "sourceVehicleWidthPx": 1168,
+            "sourceSize": [
+              1920,
+              1080
+            ],
+            "proxyBbox": [
+              30,
+              100,
+              614,
+              480
+            ],
+            "tireContactCount": 2
+          },
+          "selectionMethod": "sequence_fallback",
+          "targetAngle": 36.0,
+          "angleSource": "sequence_fallback",
+          "quality": 65.59,
+          "selectionConfidence": "medium"
+        },
+        {
+          "index": 11,
+          "key": "car-test-5-premium-v2/candidates/frame-011.jpg",
+          "selectionAngle": 33.333333333333336,
+          "angleError": 2.666666666666657,
+          "preliminaryScore": 0.7918621646485491,
+          "slot": 1,
+          "totalScore": 0.6346,
+          "components": {
+            "angle": 0.8974358974358978,
+            "sharpness": 0.7408681849922787,
+            "exposure": 0.4494187747842917,
+            "segmentation": 1.0,
+            "viewpoint": 0.5684251873338168,
+            "perspective": 0.7849698960043786,
+            "framing": 0.4082598142068491,
+            "resolution": 0.7223529411764706
+          },
+          "measurements": {
+            "vehicleSize": 0.8391666666666666,
+            "blurRisk": 0.0,
+            "clippingRisk": 0.6990740740740741,
+            "apparentPitchQuality": 0.40354121343969074,
+            "upperSurfaceRatio": 0.872,
+            "contactSpreadRatio": 0.293,
+            "wheelSizeRatio": 1.672,
+            "measuredViewType": "three-quarter",
+            "sourceVehicleWidthPx": 1228,
+            "sourceSize": [
+              1920,
+              1080
+            ],
+            "proxyBbox": [
+              13,
+              112,
+              627,
+              487
+            ],
+            "tireContactCount": 2
+          },
+          "selectionMethod": "sequence_fallback"
+        },
+        {
+          "index": 12,
+          "key": "car-test-5-premium-v2/candidates/frame-012.jpg",
+          "selectionAngle": 36.666666666666664,
+          "angleError": 0.6666666666666572,
+          "preliminaryScore": 0.8096938081845022,
+          "slot": 1,
+          "totalScore": 0.6217,
+          "components": {
+            "angle": 0.9743589743589747,
+            "sharpness": 0.7444095792501814,
+            "exposure": 0.4677750793508709,
+            "segmentation": 1.0,
+            "viewpoint": 0.5422311867752282,
+            "perspective": 0.7607301587301586,
+            "framing": 0.352049362465832,
+            "resolution": 0.7094117647058824
+          },
+          "measurements": {
+            "vehicleSize": 0.8162500000000001,
+            "blurRisk": 0.0,
+            "clippingRisk": 0.7685185185185186,
+            "apparentPitchQuality": 0.37083888477670857,
+            "upperSurfaceRatio": 0.89,
+            "contactSpreadRatio": 0.299,
+            "wheelSizeRatio": 1.696,
+            "measuredViewType": "three-quarter",
+            "sourceVehicleWidthPx": 1206,
+            "sourceSize": [
+              1920,
+              1080
+            ],
+            "proxyBbox": [
+              10,
+              107,
+              613,
+              482
+            ],
+            "tireContactCount": 2
+          },
+          "selectionMethod": "sequence_fallback"
+        },
+        {
+          "index": 15,
+          "key": "car-test-5-premium-v2/candidates/frame-015.jpg",
+          "selectionAngle": 46.666666666666664,
+          "angleError": 10.666666666666657,
+          "preliminaryScore": 0.7421017219877626,
+          "slot": 1,
+          "totalScore": 0.6046,
+          "components": {
+            "angle": 0.5897435897435901,
+            "sharpness": 0.7572072592134163,
+            "exposure": 0.5377586936496548,
+            "segmentation": 1.0,
+            "viewpoint": 0.4186549895548771,
+            "perspective": 0.429080114985627,
+            "framing": 0.783889507337926,
+            "resolution": 0.6447058823529411
+          },
+          "measurements": {
+            "vehicleSize": 0.7016666666666667,
+            "blurRisk": 0.0,
+            "clippingRisk": 0.18981481481481474,
+            "apparentPitchQuality": 0.2066045315764101,
+            "upperSurfaceRatio": 0.95,
+            "contactSpreadRatio": 0.339,
+            "wheelSizeRatio": 2.075,
+            "measuredViewType": "three-quarter",
+            "sourceVehicleWidthPx": 1096,
+            "sourceSize": [
+              1920,
+              1080
+            ],
+            "proxyBbox": [
+              35,
+              97,
+              583,
+              478
+            ],
+            "tireContactCount": 2
+          },
+          "selectionMethod": "sequence_fallback"
+        },
+        {
+          "index": 9,
+          "key": "car-test-5-premium-v2/candidates/frame-009.jpg",
+          "selectionAngle": 26.666666666666668,
+          "angleError": 9.333333333333343,
+          "preliminaryScore": 0.7258733287773484,
+          "slot": 1,
+          "totalScore": 0.5745,
+          "components": {
+            "angle": 0.6410256410256406,
+            "sharpness": 0.7167797590841835,
+            "exposure": 0.47570810063440133,
+            "segmentation": 0.8,
+            "viewpoint": 0.6601626392110157,
+            "perspective": 0.8359246954595791,
+            "framing": 0.18729832110830874,
+            "resolution": 0.78
+          },
+          "measurements": {
+            "vehicleSize": 0.9412500000000001,
+            "blurRisk": 0.0,
+            "clippingRisk": 1.0,
+            "apparentPitchQuality": 0.5255529263043524,
+            "upperSurfaceRatio": 0.828,
+            "contactSpreadRatio": 0.264,
+            "wheelSizeRatio": 1.451,
+            "measuredViewType": "three-quarter",
+            "sourceVehicleWidthPx": 1326,
+            "sourceSize": [
+              1920,
+              1080
+            ],
+            "proxyBbox": [
+              0,
+              106,
+              663,
+              493
+            ],
+            "tireContactCount": 2
+          },
+          "selectionMethod": "sequence_fallback"
+        }
+      ]
+    },
+    {
+      "slot": 2,
+      "targetAngle": 72.0,
+      "viewType": "front-rear",
+      "halfWindow": 18.0,
+      "selectedFrame": 22,
+      "topCandidates": [
+        {
+          "index": 22,
+          "key": "car-test-5-premium-v2/candidates/frame-022.jpg",
+          "selectionAngle": 70.0,
+          "angleError": 2.0,
+          "preliminaryScore": 0.8299997520316312,
+          "slot": 2,
+          "totalScore": 0.7758,
+          "components": {
+            "angle": 0.8888888888888888,
+            "sharpness": 0.7137330702696432,
+            "exposure": 0.4776903096662993,
+            "segmentation": 1.0,
+            "viewpoint": 1.0,
+            "perspective": 0.4711111111111108,
+            "framing": 0.9626526974322404,
+            "resolution": 0.4576470588235294
+          },
+          "measurements": {
+            "vehicleSize": 0.3704166666666667,
+            "blurRisk": 0.0,
+            "clippingRisk": 0.0,
+            "apparentPitchQuality": 1.0,
+            "upperSurfaceRatio": 0.908,
+            "contactSpreadRatio": 0.006,
+            "wheelSizeRatio": 1.944,
+            "measuredViewType": "front-rear",
+            "sourceVehicleWidthPx": 778,
+            "sourceSize": [
+              1920,
+              1080
+            ],
+            "proxyBbox": [
+              227,
+              106,
+              616,
+              444
+            ],
+            "tireContactCount": 2
+          },
+          "selectionMethod": "sequence_fallback",
+          "targetAngle": 72.0,
+          "angleSource": "sequence_fallback",
+          "quality": 77.58,
+          "selectionConfidence": "high"
+        },
+        {
+          "index": 23,
+          "key": "car-test-5-premium-v2/candidates/frame-023.jpg",
+          "selectionAngle": 73.33333333333333,
+          "angleError": 1.3333333333333144,
+          "preliminaryScore": 0.8444025140333877,
+          "slot": 2,
+          "totalScore": 0.7436,
+          "components": {
+            "angle": 0.9259259259259269,
+            "sharpness": 0.7040223984243522,
+            "exposure": 0.5040117115707636,
+            "segmentation": 1.0,
+            "viewpoint": 0.6911999999999999,
+            "perspective": 0.7404,
+            "framing": 0.9594691726728863,
+            "resolution": 0.4388235294117647
+          },
+          "measurements": {
+            "vehicleSize": 0.3370833333333334,
+            "blurRisk": 0.0,
+            "clippingRisk": 0.0,
+            "apparentPitchQuality": 0.804,
+            "upperSurfaceRatio": 0.847,
+            "contactSpreadRatio": null,
+            "wheelSizeRatio": null,
+            "measuredViewType": "three-quarter",
+            "sourceVehicleWidthPx": 746,
+            "sourceSize": [
+              1920,
+              1080
+            ],
+            "proxyBbox": [
+              223,
+              105,
+              596,
+              446
+            ],
+            "tireContactCount": 1
+          },
+          "selectionMethod": "sequence_fallback"
+        },
+        {
+          "index": 24,
+          "key": "car-test-5-premium-v2/candidates/frame-024.jpg",
+          "selectionAngle": 76.66666666666667,
+          "angleError": 4.666666666666686,
+          "preliminaryScore": 0.8112075949338009,
+          "slot": 2,
+          "totalScore": 0.7367,
+          "components": {
+            "angle": 0.7407407407407397,
+            "sharpness": 0.6982163759676254,
+            "exposure": 0.5127461195062779,
+            "segmentation": 1.0,
+            "viewpoint": 1.0,
+            "perspective": 0.31999999999999995,
+            "framing": 0.9545699976161339,
+            "resolution": 0.4447058823529412
+          },
+          "measurements": {
+            "vehicleSize": 0.34750000000000003,
+            "blurRisk": 0.0,
+            "clippingRisk": 0.0,
+            "apparentPitchQuality": 1.0,
+            "upperSurfaceRatio": 0.822,
+            "contactSpreadRatio": 0.017,
+            "wheelSizeRatio": 4.655,
+            "measuredViewType": "front-rear",
+            "sourceVehicleWidthPx": 756,
+            "sourceSize": [
+              1920,
+              1080
+            ],
+            "proxyBbox": [
+              205,
+              101,
+              583,
+              450
+            ],
+            "tireContactCount": 2
+          },
+          "selectionMethod": "sequence_fallback"
+        },
+        {
+          "index": 25,
+          "key": "car-test-5-premium-v2/candidates/frame-025.jpg",
+          "selectionAngle": 80.0,
+          "angleError": 8.0,
+          "preliminaryScore": 0.77066596241024,
+          "slot": 2,
+          "totalScore": 0.7166,
+          "components": {
+            "angle": 0.5555555555555556,
+            "sharpness": 0.6952729208705579,
+            "exposure": 0.5039325686649347,
+            "segmentation": 1.0,
+            "viewpoint": 0.9979120111731844,
+            "perspective": 0.3185474860335195,
+            "framing": 0.9492660248410866,
+            "resolution": 0.45294117647058824
+          },
+          "measurements": {
+            "vehicleSize": 0.3620833333333334,
+            "blurRisk": 0.0,
+            "clippingRisk": 0.0,
+            "apparentPitchQuality": 0.996822625698324,
+            "upperSurfaceRatio": 0.786,
+            "contactSpreadRatio": 0.031,
+            "wheelSizeRatio": 3.535,
+            "measuredViewType": "front-rear",
+            "sourceVehicleWidthPx": 770,
+            "sourceSize": [
+              1920,
+              1080
+            ],
+            "proxyBbox": [
+              181,
+              101,
+              566,
+              459
+            ],
+            "tireContactCount": 2
+          },
+          "selectionMethod": "sequence_fallback"
+        },
+        {
+          "index": 20,
+          "key": "car-test-5-premium-v2/candidates/frame-020.jpg",
+          "selectionAngle": 63.333333333333336,
+          "angleError": 8.666666666666657,
+          "preliminaryScore": 0.7597973253231537,
+          "slot": 2,
+          "totalScore": 0.7069,
+          "components": {
+            "angle": 0.518518518518519,
+            "sharpness": 0.7336550166467963,
+            "exposure": 0.5036478330956473,
+            "segmentation": 1.0,
+            "viewpoint": 0.7712222991689751,
+            "perspective": 0.5357216349143535,
+            "framing": 0.9475789827578971,
+            "resolution": 0.5247058823529411
+          },
+          "measurements": {
+            "vehicleSize": 0.48916666666666675,
+            "blurRisk": 0.0,
+            "clippingRisk": 0.0,
+            "apparentPitchQuality": 0.8040339335180056,
+            "upperSurfaceRatio": 0.978,
+            "contactSpreadRatio": 0.075,
+            "wheelSizeRatio": 1.786,
+            "measuredViewType": "three-quarter",
+            "sourceVehicleWidthPx": 892,
+            "sourceSize": [
+              1920,
+              1080
+            ],
+            "proxyBbox": [
+              142,
+              104,
+              588,
+              465
+            ],
+            "tireContactCount": 2
+          },
+          "selectionMethod": "sequence_fallback"
+        }
+      ]
+    },
+    {
+      "slot": 3,
+      "targetAngle": 108.0,
+      "viewType": "three-quarter",
+      "halfWindow": 26.0,
+      "selectedFrame": 34,
+      "topCandidates": [
+        {
+          "index": 34,
+          "key": "car-test-5-premium-v2/candidates/frame-034.jpg",
+          "selectionAngle": 110.0,
+          "angleError": 2.0,
+          "preliminaryScore": 0.8472012724896332,
+          "slot": 3,
+          "totalScore": 0.8011,
+          "components": {
+            "angle": 0.9230769230769231,
+            "sharpness": 0.7294856383931138,
+            "exposure": 0.5641674685045538,
+            "segmentation": 1.0,
+            "viewpoint": 0.6930042714760323,
+            "perspective": 1.0,
+            "framing": 0.9525130865980485,
+            "resolution": 0.5529411764705883
+          },
+          "measurements": {
+            "vehicleSize": 0.5391666666666667,
+            "blurRisk": 0.0,
+            "clippingRisk": 0.0,
+            "apparentPitchQuality": 0.7700047460844803,
+            "upperSurfaceRatio": 0.935,
+            "contactSpreadRatio": 0.017,
+            "wheelSizeRatio": 1.623,
+            "measuredViewType": "front-rear",
+            "sourceVehicleWidthPx": 940,
+            "sourceSize": [
+              1920,
+              1080
+            ],
+            "proxyBbox": [
+              144,
+              107,
+              614,
+              460
+            ],
+            "tireContactCount": 2
+          },
+          "selectionMethod": "sequence_fallback",
+          "targetAngle": 108.0,
+          "angleSource": "sequence_fallback",
+          "quality": 80.11,
+          "selectionConfidence": "high"
+        },
+        {
+          "index": 33,
+          "key": "car-test-5-premium-v2/candidates/frame-033.jpg",
+          "selectionAngle": 106.66666666666667,
+          "angleError": 1.3333333333333144,
+          "preliminaryScore": 0.8238270595792863,
+          "slot": 3,
+          "totalScore": 0.7947,
+          "components": {
+            "angle": 0.9487179487179495,
+            "sharpness": 0.7208637491419242,
+            "exposure": 0.5206155620978088,
+            "segmentation": 1.0,
+            "viewpoint": 0.681220719234576,
+            "perspective": 1.0,
+            "framing": 0.952770441519394,
+            "resolution": 0.54
+          },
+          "measurements": {
+            "vehicleSize": 0.5162500000000001,
+            "blurRisk": 0.0,
+            "clippingRisk": 0.0,
+            "apparentPitchQuality": 0.7569119102606401,
+            "upperSurfaceRatio": 0.947,
+            "contactSpreadRatio": 0.047,
+            "wheelSizeRatio": 1.263,
+            "measuredViewType": "front-rear",
+            "sourceVehicleWidthPx": 918,
+            "sourceSize": [
+              1920,
+              1080
+            ],
+            "proxyBbox": [
+              146,
+              109,
+              605,
+              468
+            ],
+            "tireContactCount": 2
+          },
+          "selectionMethod": "sequence_fallback"
+        },
+        {
+          "index": 36,
+          "key": "car-test-5-premium-v2/candidates/frame-036.jpg",
+          "selectionAngle": 116.66666666666667,
+          "angleError": 8.666666666666686,
+          "preliminaryScore": 0.7774420802234318,
+          "slot": 3,
+          "totalScore": 0.7366,
+          "components": {
+            "angle": 0.666666666666666,
+            "sharpness": 0.7162384493253937,
+            "exposure": 0.5808864585317066,
+            "segmentation": 1.0,
+            "viewpoint": 0.6661416909620992,
+            "perspective": 0.7404,
+            "framing": 0.9606299214323903,
+            "resolution": 0.5976470588235294
+          },
+          "measurements": {
+            "vehicleSize": 0.6183333333333334,
+            "blurRisk": 0.0,
+            "clippingRisk": 0.0,
+            "apparentPitchQuality": 0.5761574344023325,
+            "upperSurfaceRatio": 0.933,
+            "contactSpreadRatio": null,
+            "wheelSizeRatio": null,
+            "measuredViewType": "three-quarter",
+            "sourceVehicleWidthPx": 1016,
+            "sourceSize": [
+              1920,
+              1080
+            ],
+            "proxyBbox": [
+              156,
+              97,
+              664,
+              458
+            ],
+            "tireContactCount": 1
+          },
+          "selectionMethod": "sequence_fallback"
+        },
+        {
+          "index": 32,
+          "key": "car-test-5-premium-v2/candidates/frame-032.jpg",
+          "selectionAngle": 103.33333333333333,
+          "angleError": 4.666666666666686,
+          "preliminaryScore": 0.8191536192214969,
+          "slot": 3,
+          "totalScore": 0.7303,
+          "components": {
+            "angle": 0.8205128205128198,
+            "sharpness": 0.7053170548648314,
+            "exposure": 0.537991151860683,
+            "segmentation": 1.0,
+            "viewpoint": 0.6318496681802305,
+            "perspective": 0.7404,
+            "framing": 0.9460239248546161,
+            "resolution": 0.5305882352941177
+          },
+          "measurements": {
+            "vehicleSize": 0.4995833333333334,
+            "blurRisk": 0.0,
+            "clippingRisk": 0.0,
+            "apparentPitchQuality": 0.5380551868669228,
+            "upperSurfaceRatio": 0.968,
+            "contactSpreadRatio": null,
+            "wheelSizeRatio": null,
+            "measuredViewType": "three-quarter",
+            "sourceVehicleWidthPx": 902,
+            "sourceSize": [
+              1920,
+              1080
+            ],
+            "proxyBbox": [
+              128,
+              113,
+              579,
+              482
+            ],
+            "tireContactCount": 1
+          },
+          "selectionMethod": "sequence_fallback"
+        },
+        {
+          "index": 30,
+          "key": "car-test-5-premium-v2/candidates/frame-030.jpg",
+          "selectionAngle": 96.66666666666667,
+          "angleError": 11.333333333333314,
+          "preliminaryScore": 0.7827348487042471,
+          "slot": 3,
+          "totalScore": 0.7072,
+          "components": {
+            "angle": 0.5641025641025648,
+            "sharpness": 0.7095249344163227,
+            "exposure": 0.5387990478307484,
+            "segmentation": 1.0,
+            "viewpoint": 0.660163821453168,
+            "perspective": 0.7404,
+            "framing": 0.9482190611807781,
+            "resolution": 0.4811764705882353
+          },
+          "measurements": {
+            "vehicleSize": 0.41208333333333336,
+            "blurRisk": 0.0,
+            "clippingRisk": 0.0,
+            "apparentPitchQuality": 0.591890625,
+            "upperSurfaceRatio": 0.918,
+            "contactSpreadRatio": null,
+            "wheelSizeRatio": null,
+            "measuredViewType": "three-quarter",
+            "sourceVehicleWidthPx": 818,
+            "sourceSize": [
+              1920,
+              1080
+            ],
+            "proxyBbox": [
+              163,
+              102,
+              572,
+              465
+            ],
+            "tireContactCount": 1
+          },
+          "selectionMethod": "sequence_fallback"
+        }
+      ]
+    },
+    {
+      "slot": 4,
+      "targetAngle": 144.0,
+      "viewType": "three-quarter",
+      "halfWindow": 26.0,
+      "selectedFrame": 47,
+      "topCandidates": [
+        {
+          "index": 47,
+          "key": "car-test-5-premium-v2/candidates/frame-047.jpg",
+          "selectionAngle": 153.33333333333334,
+          "angleError": 9.333333333333343,
+          "preliminaryScore": 0.7211214602977525,
+          "slot": 4,
+          "totalScore": 0.7394,
+          "components": {
+            "angle": 0.6410256410256406,
+            "sharpness": 0.6107112522108287,
+            "exposure": 0.5030589354888255,
+            "segmentation": 1.0,
+            "viewpoint": 0.6583380704675181,
+            "perspective": 0.814724721122706,
+            "framing": 0.9808585506514824,
+            "resolution": 0.8670588235294118
+          },
+          "measurements": {
+            "vehicleSize": 0.9045833333333333,
+            "blurRisk": 0.0,
+            "clippingRisk": 0.0,
+            "apparentPitchQuality": 0.5110117539599508,
+            "upperSurfaceRatio": 0.798,
+            "contactSpreadRatio": 0.282,
+            "wheelSizeRatio": 1.641,
+            "measuredViewType": "three-quarter",
+            "sourceVehicleWidthPx": 1474,
+            "sourceSize": [
+              1920,
+              1080
+            ],
+            "proxyBbox": [
+              98,
+              90,
+              835,
+              487
+            ],
+            "tireContactCount": 2
+          },
+          "selectionMethod": "sequence_fallback",
+          "targetAngle": 144.0,
+          "angleSource": "sequence_fallback",
+          "quality": 73.94,
+          "selectionConfidence": "high"
+        },
+        {
+          "index": 46,
+          "key": "car-test-5-premium-v2/candidates/frame-046.jpg",
+          "selectionAngle": 150.0,
+          "angleError": 6.0,
+          "preliminaryScore": 0.7416162387659248,
+          "slot": 4,
+          "totalScore": 0.7229,
+          "components": {
+            "angle": 0.7692307692307692,
+            "sharpness": 0.6113439559524024,
+            "exposure": 0.5029703746202104,
+            "segmentation": 1.0,
+            "viewpoint": 0.5873539732471531,
+            "perspective": 0.7201196913980821,
+            "framing": 0.9845727402648582,
+            "resolution": 0.851764705882353
+          },
+          "measurements": {
+            "vehicleSize": 0.9316666666666666,
+            "blurRisk": 0.0,
+            "clippingRisk": 0.0,
+            "apparentPitchQuality": 0.4160483616510657,
+            "upperSurfaceRatio": 0.831,
+            "contactSpreadRatio": 0.306,
+            "wheelSizeRatio": 1.739,
+            "measuredViewType": "three-quarter",
+            "sourceVehicleWidthPx": 1448,
+            "sourceSize": [
+              1920,
+              1080
+            ],
+            "proxyBbox": [
+              100,
+              94,
+              824,
+              496
+            ],
+            "tireContactCount": 2
+          },
+          "selectionMethod": "sequence_fallback"
+        },
+        {
+          "index": 44,
+          "key": "car-test-5-premium-v2/candidates/frame-044.jpg",
+          "selectionAngle": 143.33333333333334,
+          "angleError": 0.6666666666666572,
+          "preliminaryScore": 0.761836836080615,
+          "slot": 4,
+          "totalScore": 0.6965,
+          "components": {
+            "angle": 0.9743589743589747,
+            "sharpness": 0.618922484279788,
+            "exposure": 0.5032942070983637,
+            "segmentation": 1.0,
+            "viewpoint": 0.4922110603676848,
+            "perspective": 0.5336076483821192,
+            "framing": 0.9845372699063887,
+            "resolution": 0.8164705882352942
+          },
+          "measurements": {
+            "vehicleSize": 0.9941666666666666,
+            "blurRisk": 0.0,
+            "clippingRisk": 0.0,
+            "apparentPitchQuality": 0.2858269359384802,
+            "upperSurfaceRatio": 0.868,
+            "contactSpreadRatio": 0.342,
+            "wheelSizeRatio": 1.931,
+            "measuredViewType": "three-quarter",
+            "sourceVehicleWidthPx": 1388,
+            "sourceSize": [
+              1920,
+              1080
+            ],
+            "proxyBbox": [
+              105,
+              95,
+              799,
+              504
+            ],
+            "tireContactCount": 2
+          },
+          "selectionMethod": "sequence_fallback"
+        },
+        {
+          "index": 43,
+          "key": "car-test-5-premium-v2/candidates/frame-043.jpg",
+          "selectionAngle": 140.0,
+          "angleError": 4.0,
+          "preliminaryScore": 0.7805967500164821,
+          "slot": 4,
+          "totalScore": 0.6676,
+          "components": {
+            "angle": 0.8461538461538461,
+            "sharpness": 0.6617869856607154,
+            "exposure": 0.5296575655434859,
+            "segmentation": 1.0,
+            "viewpoint": 0.4471730112831698,
+            "perspective": 0.4363490458830959,
+            "framing": 0.9826234457574098,
+            "resolution": 0.7823529411764706
+          },
+          "measurements": {
+            "vehicleSize": 0.9454166666666668,
+            "blurRisk": 0.0,
+            "clippingRisk": 0.0,
+            "apparentPitchQuality": 0.22565089795967622,
+            "upperSurfaceRatio": 0.889,
+            "contactSpreadRatio": 0.357,
+            "wheelSizeRatio": 2.037,
+            "measuredViewType": "three-quarter",
+            "sourceVehicleWidthPx": 1330,
+            "sourceSize": [
+              1920,
+              1080
+            ],
+            "proxyBbox": [
+              115,
+              97,
+              780,
+              500
+            ],
+            "tireContactCount": 2
+          },
+          "selectionMethod": "sequence_fallback"
+        },
+        {
+          "index": 41,
+          "key": "car-test-5-premium-v2/candidates/frame-041.jpg",
+          "selectionAngle": 133.33333333333334,
+          "angleError": 10.666666666666657,
+          "preliminaryScore": 0.7572027031948911,
+          "slot": 4,
+          "totalScore": 0.6339,
+          "components": {
+            "angle": 0.5897435897435901,
+            "sharpness": 0.6986027126400013,
+            "exposure": 0.538007041120063,
+            "segmentation": 1.0,
+            "viewpoint": 0.43839530113396075,
+            "perspective": 0.38599547402378526,
+            "framing": 0.9774842262081792,
+            "resolution": 0.7141176470588235
+          },
+          "measurements": {
+            "vehicleSize": 0.8245833333333334,
+            "blurRisk": 0.0,
+            "clippingRisk": 0.0,
+            "apparentPitchQuality": 0.21813414985927557,
+            "upperSurfaceRatio": 0.904,
+            "contactSpreadRatio": 0.354,
+            "wheelSizeRatio": 2.109,
+            "measuredViewType": "three-quarter",
+            "sourceVehicleWidthPx": 1214,
+            "sourceSize": [
+              1920,
+              1080
+            ],
+            "proxyBbox": [
+              165,
+              90,
+              772,
+              477
+            ],
+            "tireContactCount": 2
+          },
+          "selectionMethod": "sequence_fallback"
+        }
+      ]
+    },
+    {
+      "slot": 5,
+      "targetAngle": 180.0,
+      "viewType": "side",
+      "halfWindow": 18.0,
+      "selectedFrame": 57,
+      "topCandidates": [
+        {
+          "index": 57,
+          "key": "car-test-5-premium-v2/candidates/frame-057.jpg",
+          "selectionAngle": 186.66666666666666,
+          "angleError": 6.666666666666657,
+          "preliminaryScore": 0.7045475157475536,
+          "slot": 5,
+          "totalScore": 0.7416,
+          "components": {
+            "angle": 0.6296296296296302,
+            "sharpness": 0.5867290873918853,
+            "exposure": 0.4221586478672739,
+            "segmentation": 1.0,
+            "viewpoint": 1.0,
+            "perspective": 1.0,
+            "framing": 0.5541974861399173,
+            "resolution": 0.9176470588235294
+          },
+          "measurements": {
+            "vehicleSize": 0.815,
+            "blurRisk": 0.0,
+            "clippingRisk": 0.5370370370370371,
+            "apparentPitchQuality": 1.0,
+            "upperSurfaceRatio": 0.658,
+            "contactSpreadRatio": 0.015,
+            "wheelSizeRatio": 1.006,
+            "measuredViewType": "side",
+            "sourceVehicleWidthPx": 1560,
+            "sourceSize": [
+              1920,
+              1080
+            ],
+            "proxyBbox": [
+              20,
+              106,
+              800,
+              435
+            ],
+            "tireContactCount": 2
+          },
+          "selectionMethod": "sequence_fallback",
+          "targetAngle": 180.0,
+          "angleSource": "sequence_fallback",
+          "quality": 74.16,
+          "selectionConfidence": "high"
+        },
+        {
+          "index": 56,
+          "key": "car-test-5-premium-v2/candidates/frame-056.jpg",
+          "selectionAngle": 183.33333333333334,
+          "angleError": 3.333333333333343,
+          "preliminaryScore": 0.7464815703984726,
+          "slot": 5,
+          "totalScore": 0.6762,
+          "components": {
+            "angle": 0.8148148148148143,
+            "sharpness": 0.5952248686637783,
+            "exposure": 0.42316750896418376,
+            "segmentation": 1.0,
+            "viewpoint": 0.9235722140762463,
+            "perspective": 0.94683284457478,
+            "framing": 0.27702106782155184,
+            "resolution": 0.9294117647058824
+          },
+          "measurements": {
+            "vehicleSize": 0.7941666666666667,
+            "blurRisk": 0.0,
+            "clippingRisk": 0.9074074074074074,
+            "apparentPitchQuality": 0.8836968475073314,
+            "upperSurfaceRatio": 0.67,
+            "contactSpreadRatio": 0.062,
+            "wheelSizeRatio": 1.054,
+            "measuredViewType": "side",
+            "sourceVehicleWidthPx": 1580,
+            "sourceSize": [
+              1920,
+              1080
+            ],
+            "proxyBbox": [
+              4,
+              108,
+              794,
+              449
+            ],
+            "tireContactCount": 2
+          },
+          "selectionMethod": "sequence_fallback"
+        },
+        {
+          "index": 55,
+          "key": "car-test-5-premium-v2/candidates/frame-055.jpg",
+          "selectionAngle": 180.0,
+          "angleError": 0.0,
+          "preliminaryScore": 0.7848045002299631,
+          "slot": 5,
+          "totalScore": 0.6331,
+          "components": {
+            "angle": 1.0,
+            "sharpness": 0.594501314267729,
+            "exposure": 0.4409680574651122,
+            "segmentation": 0.8,
+            "viewpoint": 0.8279956896551725,
+            "perspective": 0.8803448275862069,
+            "framing": 0.20660675931942063,
+            "resolution": 0.9247058823529412
+          },
+          "measurements": {
+            "vehicleSize": 0.8025,
+            "blurRisk": 0.0,
+            "clippingRisk": 1.0,
+            "apparentPitchQuality": 0.7382543103448276,
+            "upperSurfaceRatio": 0.684,
+            "contactSpreadRatio": 0.095,
+            "wheelSizeRatio": 1.12,
+            "measuredViewType": "side",
+            "sourceVehicleWidthPx": 1572,
+            "sourceSize": [
+              1920,
+              1080
+            ],
+            "proxyBbox": [
+              0,
+              107,
+              786,
+              455
+            ],
+            "tireContactCount": 2
+          },
+          "selectionMethod": "sequence_fallback"
+        },
+        {
+          "index": 54,
+          "key": "car-test-5-premium-v2/candidates/frame-054.jpg",
+          "selectionAngle": 176.66666666666666,
+          "angleError": 3.333333333333343,
+          "preliminaryScore": 0.7502807888945814,
+          "slot": 5,
+          "totalScore": 0.6203,
+          "components": {
+            "angle": 0.8148148148148143,
+            "sharpness": 0.5883873532820497,
+            "exposure": 0.45892741185136365,
+            "segmentation": 1.0,
+            "viewpoint": 0.751401836158192,
+            "perspective": 0.8270621468926553,
+            "framing": 0.273949158874533,
+            "resolution": 0.9188235294117647
+          },
+          "measurements": {
+            "vehicleSize": 0.8129166666666665,
+            "blurRisk": 0.0,
+            "clippingRisk": 0.9074074074074074,
+            "apparentPitchQuality": 0.6216984463276836,
+            "upperSurfaceRatio": 0.693,
+            "contactSpreadRatio": 0.121,
+            "wheelSizeRatio": 1.128,
+            "measuredViewType": "side",
+            "sourceVehicleWidthPx": 1562,
+            "sourceSize": [
+              1920,
+              1080
+            ],
+            "proxyBbox": [
+              4,
+              98,
+              785,
+              452
+            ],
+            "tireContactCount": 2
+          },
+          "selectionMethod": "sequence_fallback"
+        },
+        {
+          "index": 53,
+          "key": "car-test-5-premium-v2/candidates/frame-053.jpg",
+          "selectionAngle": 173.33333333333334,
+          "angleError": 6.666666666666657,
+          "preliminaryScore": 0.7339856293461495,
+          "slot": 5,
+          "totalScore": 0.5811,
+          "components": {
+            "angle": 0.6296296296296302,
+            "sharpness": 0.6024473697107884,
+            "exposure": 0.4767176071538699,
+            "segmentation": 1.0,
+            "viewpoint": 0.5633010563380282,
+            "perspective": 0.765774647887324,
+            "framing": 0.39798211266327527,
+            "resolution": 0.9058823529411765
+          },
+          "measurements": {
+            "vehicleSize": 0.8358333333333332,
+            "blurRisk": 0.0,
+            "clippingRisk": 0.7453703703703703,
+            "apparentPitchQuality": 0.4876320422535212,
+            "upperSurfaceRatio": 0.711,
+            "contactSpreadRatio": 0.152,
+            "wheelSizeRatio": 1.168,
+            "measuredViewType": "three-quarter",
+            "sourceVehicleWidthPx": 1540,
+            "sourceSize": [
+              1920,
+              1080
+            ],
+            "proxyBbox": [
+              11,
+              102,
+              781,
+              457
+            ],
+            "tireContactCount": 2
+          },
+          "selectionMethod": "sequence_fallback"
+        }
+      ]
+    },
+    {
+      "slot": 6,
+      "targetAngle": 216.0,
+      "viewType": "side",
+      "halfWindow": 18.0,
+      "selectedFrame": 66,
+      "topCandidates": [
+        {
+          "index": 66,
+          "key": "car-test-5-premium-v2/candidates/frame-066.jpg",
+          "selectionAngle": 216.66666666666666,
+          "angleError": 0.6666666666666572,
+          "preliminaryScore": 0.8247531043069054,
+          "slot": 6,
+          "totalScore": 0.778,
+          "components": {
+            "angle": 0.9629629629629635,
+            "sharpness": 0.6143846015706753,
+            "exposure": 0.4388291763743527,
+            "segmentation": 1.0,
+            "viewpoint": 0.7712,
+            "perspective": 0.7404,
+            "framing": 0.9460530087631233,
+            "resolution": 0.8023529411764706
+          },
+          "measurements": {
+            "vehicleSize": 0.9808333333333334,
+            "blurRisk": 0.0,
+            "clippingRisk": 0.0,
+            "apparentPitchQuality": 0.804,
+            "upperSurfaceRatio": 0.683,
+            "contactSpreadRatio": null,
+            "wheelSizeRatio": null,
+            "measuredViewType": "three-quarter",
+            "sourceVehicleWidthPx": 1364,
+            "sourceSize": [
+              1920,
+              1080
+            ],
+            "proxyBbox": [
+              60,
+              82,
+              742,
+              429
+            ],
+            "tireContactCount": 1
+          },
+          "selectionMethod": "sequence_fallback",
+          "targetAngle": 216.0,
+          "angleSource": "sequence_fallback",
+          "quality": 77.8,
+          "selectionConfidence": "high"
+        },
+        {
+          "index": 67,
+          "key": "car-test-5-premium-v2/candidates/frame-067.jpg",
+          "selectionAngle": 220.0,
+          "angleError": 4.0,
+          "preliminaryScore": 0.7819879270915231,
+          "slot": 6,
+          "totalScore": 0.7598,
+          "components": {
+            "angle": 0.7777777777777778,
+            "sharpness": 0.6257235187447848,
+            "exposure": 0.4294089403431288,
+            "segmentation": 1.0,
+            "viewpoint": 0.7712,
+            "perspective": 0.7404,
+            "framing": 0.9490846119909598,
+            "resolution": 0.7847058823529411
+          },
+          "measurements": {
+            "vehicleSize": 0.9495833333333334,
+            "blurRisk": 0.0,
+            "clippingRisk": 0.0,
+            "apparentPitchQuality": 0.804,
+            "upperSurfaceRatio": 0.681,
+            "contactSpreadRatio": null,
+            "wheelSizeRatio": null,
+            "measuredViewType": "three-quarter",
+            "sourceVehicleWidthPx": 1334,
+            "sourceSize": [
+              1920,
+              1080
+            ],
+            "proxyBbox": [
+              67,
+              84,
+              734,
+              438
+            ],
+            "tireContactCount": 1
+          },
+          "selectionMethod": "sequence_fallback"
+        },
+        {
+          "index": 65,
+          "key": "car-test-5-premium-v2/candidates/frame-065.jpg",
+          "selectionAngle": 213.33333333333334,
+          "angleError": 2.666666666666657,
+          "preliminaryScore": 0.7985009455004153,
+          "slot": 6,
+          "totalScore": 0.6892,
+          "components": {
+            "angle": 0.8518518518518524,
+            "sharpness": 0.6152316088806118,
+            "exposure": 0.4395383437656898,
+            "segmentation": 1.0,
+            "viewpoint": 0.4573837209302326,
+            "perspective": 0.6895079892422082,
+            "framing": 0.9501073546191412,
+            "resolution": 0.8117647058823529
+          },
+          "measurements": {
+            "vehicleSize": 0.9975,
+            "blurRisk": 0.0,
+            "clippingRisk": 0.0,
+            "apparentPitchQuality": 0.3264534883720931,
+            "upperSurfaceRatio": 0.669,
+            "contactSpreadRatio": 0.189,
+            "wheelSizeRatio": 1.253,
+            "measuredViewType": "three-quarter",
+            "sourceVehicleWidthPx": 1380,
+            "sourceSize": [
+              1920,
+              1080
+            ],
+            "proxyBbox": [
+              69,
+              85,
+              759,
+              429
+            ],
+            "tireContactCount": 2
+          },
+          "selectionMethod": "sequence_fallback"
+        },
+        {
+          "index": 64,
+          "key": "car-test-5-premium-v2/candidates/frame-064.jpg",
+          "selectionAngle": 210.0,
+          "angleError": 6.0,
+          "preliminaryScore": 0.7656365025294363,
+          "slot": 6,
+          "totalScore": 0.6828,
+          "components": {
+            "angle": 0.6666666666666667,
+            "sharpness": 0.6104679950858899,
+            "exposure": 0.4387443044251622,
+            "segmentation": 1.0,
+            "viewpoint": 0.4947598973607038,
+            "perspective": 0.7180938416422287,
+            "framing": 0.9536882875204178,
+            "resolution": 0.8223529411764706
+          },
+          "measurements": {
+            "vehicleSize": 0.9837499999999999,
+            "blurRisk": 0.0,
+            "clippingRisk": 0.0,
+            "apparentPitchQuality": 0.38333027859237534,
+            "upperSurfaceRatio": 0.669,
+            "contactSpreadRatio": 0.176,
+            "wheelSizeRatio": 1.199,
+            "measuredViewType": "three-quarter",
+            "sourceVehicleWidthPx": 1398,
+            "sourceSize": [
+              1920,
+              1080
+            ],
+            "proxyBbox": [
+              68,
+              91,
+              767,
+              432
+            ],
+            "tireContactCount": 2
+          },
+          "selectionMethod": "sequence_fallback"
+        },
+        {
+          "index": 68,
+          "key": "car-test-5-premium-v2/candidates/frame-068.jpg",
+          "selectionAngle": 223.33333333333334,
+          "angleError": 7.333333333333343,
+          "preliminaryScore": 0.7547784546247395,
+          "slot": 6,
+          "totalScore": 0.6082,
+          "components": {
+            "angle": 0.5925925925925921,
+            "sharpness": 0.6335033293014263,
+            "exposure": 0.4387403871035721,
+            "segmentation": 1.0,
+            "viewpoint": 0.44000000000000006,
+            "perspective": 0.34000000000000014,
+            "framing": 0.9500982824654864,
+            "resolution": 0.7529411764705882
+          },
+          "measurements": {
+            "vehicleSize": 0.8933333333333333,
+            "blurRisk": 0.0,
+            "clippingRisk": 0.0,
+            "apparentPitchQuality": 0.30000000000000004,
+            "upperSurfaceRatio": 0.68,
+            "contactSpreadRatio": 0.27,
+            "wheelSizeRatio": 1.6,
+            "measuredViewType": "three-quarter",
+            "sourceVehicleWidthPx": 1280,
+            "sourceSize": [
+              1920,
+              1080
+            ],
+            "proxyBbox": [
+              114,
+              73,
+              754,
+              429
+            ],
+            "tireContactCount": 2
+          },
+          "selectionMethod": "sequence_fallback"
+        }
+      ]
+    },
+    {
+      "slot": 7,
+      "targetAngle": 252.0,
+      "viewType": "three-quarter",
+      "halfWindow": 26.0,
+      "selectedFrame": 77,
+      "topCandidates": [
+        {
+          "index": 77,
+          "key": "car-test-5-premium-v2/candidates/frame-077.jpg",
+          "selectionAngle": 253.33333333333334,
+          "angleError": 1.3333333333333428,
+          "preliminaryScore": 0.8703192170059675,
+          "slot": 7,
+          "totalScore": 0.848,
+          "components": {
+            "angle": 0.9487179487179483,
+            "sharpness": 0.9095987139867627,
+            "exposure": 0.679438798274751,
+            "segmentation": 1.0,
+            "viewpoint": 0.8542963691890058,
+            "perspective": 0.7404,
+            "framing": 0.9552275213364392,
+            "resolution": 0.5105882352941177
+          },
+          "measurements": {
+            "vehicleSize": 0.4641666666666667,
+            "blurRisk": 0.0,
+            "clippingRisk": 0.0,
+            "apparentPitchQuality": 0.7852181879877842,
+            "upperSurfaceRatio": 0.738,
+            "contactSpreadRatio": null,
+            "wheelSizeRatio": null,
+            "measuredViewType": "three-quarter",
+            "sourceVehicleWidthPx": 868,
+            "sourceSize": [
+              1920,
+              1080
+            ],
+            "proxyBbox": [
+              292,
+              93,
+              726,
+              417
+            ],
+            "tireContactCount": 1
+          },
+          "selectionMethod": "sequence_fallback",
+          "targetAngle": 252.0,
+          "angleSource": "sequence_fallback",
+          "quality": 84.8,
+          "selectionConfidence": "high"
+        },
+        {
+          "index": 76,
+          "key": "car-test-5-premium-v2/candidates/frame-076.jpg",
+          "selectionAngle": 250.0,
+          "angleError": 2.0,
+          "preliminaryScore": 0.8689679247392479,
+          "slot": 7,
+          "totalScore": 0.8435,
+          "components": {
+            "angle": 0.9230769230769231,
+            "sharpness": 0.9082173966159128,
+            "exposure": 0.6270319752021926,
+            "segmentation": 1.0,
+            "viewpoint": 0.8540376844494891,
+            "perspective": 0.7404,
+            "framing": 0.953790013555269,
+            "resolution": 0.5329411764705883
+          },
+          "measurements": {
+            "vehicleSize": 0.50375,
+            "blurRisk": 0.0,
+            "clippingRisk": 0.0,
+            "apparentPitchQuality": 0.7849307604994324,
+            "upperSurfaceRatio": 0.738,
+            "contactSpreadRatio": null,
+            "wheelSizeRatio": null,
+            "measuredViewType": "three-quarter",
+            "sourceVehicleWidthPx": 906,
+            "sourceSize": [
+              1920,
+              1080
+            ],
+            "proxyBbox": [
+              275,
+              91,
+              728,
+              413
+            ],
+            "tireContactCount": 1
+          },
+          "selectionMethod": "sequence_fallback"
+        },
+        {
+          "index": 78,
+          "key": "car-test-5-premium-v2/candidates/frame-078.jpg",
+          "selectionAngle": 256.6666666666667,
+          "angleError": 4.666666666666686,
+          "preliminaryScore": 0.8530130705144304,
+          "slot": 7,
+          "totalScore": 0.8346,
+          "components": {
+            "angle": 0.8205128205128198,
+            "sharpness": 0.9146091815636613,
+            "exposure": 0.7136744013076913,
+            "segmentation": 1.0,
+            "viewpoint": 0.8464380952380952,
+            "perspective": 0.7404,
+            "framing": 0.9535000477067814,
+            "resolution": 0.49058823529411766
+          },
+          "measurements": {
+            "vehicleSize": 0.4287500000000001,
+            "blurRisk": 0.0,
+            "clippingRisk": 0.0,
+            "apparentPitchQuality": 0.7764867724867726,
+            "upperSurfaceRatio": 0.746,
+            "contactSpreadRatio": null,
+            "wheelSizeRatio": null,
+            "measuredViewType": "three-quarter",
+            "sourceVehicleWidthPx": 834,
+            "sourceSize": [
+              1920,
+              1080
+            ],
+            "proxyBbox": [
+              306,
+              93,
+              723,
+              414
+            ],
+            "tireContactCount": 1
+          },
+          "selectionMethod": "sequence_fallback"
+        },
+        {
+          "index": 80,
+          "key": "car-test-5-premium-v2/candidates/frame-080.jpg",
+          "selectionAngle": 263.3333333333333,
+          "angleError": 11.333333333333314,
+          "preliminaryScore": 0.8011134670514226,
+          "slot": 7,
+          "totalScore": 0.786,
+          "components": {
+            "angle": 0.5641025641025648,
+            "sharpness": 0.9394306920957525,
+            "exposure": 0.7793948385409808,
+            "segmentation": 1.0,
+            "viewpoint": 0.715862588792423,
+            "perspective": 0.7404,
+            "framing": 0.9481406071538458,
+            "resolution": 0.46705882352941175
+          },
+          "measurements": {
+            "vehicleSize": 0.38708333333333333,
+            "blurRisk": 0.0,
+            "clippingRisk": 0.0,
+            "apparentPitchQuality": 0.6786250986582478,
+            "upperSurfaceRatio": 0.837,
+            "contactSpreadRatio": null,
+            "wheelSizeRatio": null,
+            "measuredViewType": "three-quarter",
+            "sourceVehicleWidthPx": 794,
+            "sourceSize": [
+              1920,
+              1080
+            ],
+            "proxyBbox": [
+              322,
+              86,
+              719,
+              408
+            ],
+            "tireContactCount": 0
+          },
+          "selectionMethod": "sequence_fallback"
+        },
+        {
+          "index": 73,
+          "key": "car-test-5-premium-v2/candidates/frame-073.jpg",
+          "selectionAngle": 240.0,
+          "angleError": 12.0,
+          "preliminaryScore": 0.7768459901462763,
+          "slot": 7,
+          "totalScore": 0.6961,
+          "components": {
+            "angle": 0.5384615384615384,
+            "sharpness": 0.8262812461546029,
+            "exposure": 0.5314246341573916,
+            "segmentation": 1.0,
+            "viewpoint": 0.6041589180050718,
+            "perspective": 0.48117550066267994,
+            "framing": 0.9663091688705252,
+            "resolution": 0.611764705882353
+          },
+          "measurements": {
+            "vehicleSize": 0.6433333333333333,
+            "blurRisk": 0.0,
+            "clippingRisk": 0.0,
+            "apparentPitchQuality": 0.39763313609467454,
+            "upperSurfaceRatio": 0.715,
+            "contactSpreadRatio": 0.361,
+            "wheelSizeRatio": 1.972,
+            "measuredViewType": "three-quarter",
+            "sourceVehicleWidthPx": 1040,
+            "sourceSize": [
+              1920,
+              1080
+            ],
+            "proxyBbox": [
+              229,
+              99,
+              749,
+              437
+            ],
+            "tireContactCount": 2
+          },
+          "selectionMethod": "sequence_fallback"
+        }
+      ]
+    },
+    {
+      "slot": 8,
+      "targetAngle": 288.0,
+      "viewType": "front-rear",
+      "halfWindow": 18.0,
+      "selectedFrame": 87,
+      "topCandidates": [
+        {
+          "index": 87,
+          "key": "car-test-5-premium-v2/candidates/frame-087.jpg",
+          "selectionAngle": 286.6666666666667,
+          "angleError": 1.3333333333333144,
+          "preliminaryScore": 0.8890960075310885,
+          "slot": 8,
+          "totalScore": 0.8304,
+          "components": {
+            "angle": 0.9259259259259269,
+            "sharpness": 0.93210983209869,
+            "exposure": 0.866745052299682,
+            "segmentation": 1.0,
+            "viewpoint": 0.7287,
+            "perspective": 0.7404,
+            "framing": 0.9577158095663284,
+            "resolution": 0.46588235294117647
+          },
+          "measurements": {
+            "vehicleSize": 0.385,
+            "blurRisk": 0.0,
+            "clippingRisk": 0.0,
+            "apparentPitchQuality": 0.804,
+            "upperSurfaceRatio": 0.798,
+            "contactSpreadRatio": null,
+            "wheelSizeRatio": null,
+            "measuredViewType": "three-quarter",
+            "sourceVehicleWidthPx": 792,
+            "sourceSize": [
+              1920,
+              1080
+            ],
+            "proxyBbox": [
+              321,
+              87,
+              717,
+              434
+            ],
+            "tireContactCount": 0
+          },
+          "selectionMethod": "sequence_fallback",
+          "targetAngle": 288.0,
+          "angleSource": "sequence_fallback",
+          "quality": 83.04,
+          "selectionConfidence": "high"
+        },
+        {
+          "index": 88,
+          "key": "car-test-5-premium-v2/candidates/frame-088.jpg",
+          "selectionAngle": 290.0,
+          "angleError": 2.0,
+          "preliminaryScore": 0.868639833502111,
+          "slot": 8,
+          "totalScore": 0.8252,
+          "components": {
+            "angle": 0.8888888888888888,
+            "sharpness": 0.9053976119709901,
+            "exposure": 0.8874251406670635,
+            "segmentation": 1.0,
+            "viewpoint": 0.7287,
+            "perspective": 0.7404,
+            "framing": 0.9620818229396836,
+            "resolution": 0.4894117647058824
+          },
+          "measurements": {
+            "vehicleSize": 0.42666666666666675,
+            "blurRisk": 0.0,
+            "clippingRisk": 0.0,
+            "apparentPitchQuality": 0.804,
+            "upperSurfaceRatio": 0.802,
+            "contactSpreadRatio": null,
+            "wheelSizeRatio": null,
+            "measuredViewType": "three-quarter",
+            "sourceVehicleWidthPx": 832,
+            "sourceSize": [
+              1920,
+              1080
+            ],
+            "proxyBbox": [
+              313,
+              87,
+              729,
+              448
+            ],
+            "tireContactCount": 0
+          },
+          "selectionMethod": "sequence_fallback"
+        },
+        {
+          "index": 86,
+          "key": "car-test-5-premium-v2/candidates/frame-086.jpg",
+          "selectionAngle": 283.3333333333333,
+          "angleError": 4.666666666666686,
+          "preliminaryScore": 0.8516868769886244,
+          "slot": 8,
+          "totalScore": 0.8122,
+          "components": {
+            "angle": 0.7407407407407397,
+            "sharpness": 0.9413302577279222,
+            "exposure": 0.8669492590262524,
+            "segmentation": 1.0,
+            "viewpoint": 0.7287,
+            "perspective": 0.7404,
+            "framing": 0.9604782184757683,
+            "resolution": 0.44588235294117645
+          },
+          "measurements": {
+            "vehicleSize": 0.34958333333333336,
+            "blurRisk": 0.0,
+            "clippingRisk": 0.0,
+            "apparentPitchQuality": 0.804,
+            "upperSurfaceRatio": 0.789,
+            "contactSpreadRatio": null,
+            "wheelSizeRatio": null,
+            "measuredViewType": "three-quarter",
+            "sourceVehicleWidthPx": 758,
+            "sourceSize": [
+              1920,
+              1080
+            ],
+            "proxyBbox": [
+              325,
+              94,
+              704,
+              433
+            ],
+            "tireContactCount": 0
+          },
+          "selectionMethod": "sequence_fallback"
+        },
+        {
+          "index": 90,
+          "key": "car-test-5-premium-v2/candidates/frame-090.jpg",
+          "selectionAngle": 296.6666666666667,
+          "angleError": 8.666666666666686,
+          "preliminaryScore": 0.7732981952774569,
+          "slot": 8,
+          "totalScore": 0.7971,
+          "components": {
+            "angle": 0.5185185185185175,
+            "sharpness": 0.8884997881732452,
+            "exposure": 0.8699530160541552,
+            "segmentation": 1.0,
+            "viewpoint": 0.7712,
+            "perspective": 0.7404,
+            "framing": 0.9690450956349014,
+            "resolution": 0.5223529411764706
+          },
+          "measurements": {
+            "vehicleSize": 0.4850000000000001,
+            "blurRisk": 0.0,
+            "clippingRisk": 0.0,
+            "apparentPitchQuality": 0.804,
+            "upperSurfaceRatio": 0.847,
+            "contactSpreadRatio": null,
+            "wheelSizeRatio": null,
+            "measuredViewType": "three-quarter",
+            "sourceVehicleWidthPx": 888,
+            "sourceSize": [
+              1920,
+              1080
+            ],
+            "proxyBbox": [
+              312,
+              96,
+              756,
+              473
+            ],
+            "tireContactCount": 1
+          },
+          "selectionMethod": "sequence_fallback"
+        },
+        {
+          "index": 85,
+          "key": "car-test-5-premium-v2/candidates/frame-085.jpg",
+          "selectionAngle": 280.0,
+          "angleError": 8.0,
+          "preliminaryScore": 0.7980877288349472,
+          "slot": 8,
+          "totalScore": 0.7934,
+          "components": {
+            "angle": 0.5555555555555556,
+            "sharpness": 0.9431717783439275,
+            "exposure": 0.8563158886571055,
+            "segmentation": 1.0,
+            "viewpoint": 0.7287,
+            "perspective": 0.7404,
+            "framing": 0.9603201944504521,
+            "resolution": 0.4470588235294118
+          },
+          "measurements": {
+            "vehicleSize": 0.3516666666666667,
+            "blurRisk": 0.0,
+            "clippingRisk": 0.0,
+            "apparentPitchQuality": 0.804,
+            "upperSurfaceRatio": 0.772,
+            "contactSpreadRatio": null,
+            "wheelSizeRatio": null,
+            "measuredViewType": "three-quarter",
+            "sourceVehicleWidthPx": 760,
+            "sourceSize": [
+              1920,
+              1080
+            ],
+            "proxyBbox": [
+              318,
+              94,
+              698,
+              430
+            ],
+            "tireContactCount": 0
+          },
+          "selectionMethod": "sequence_fallback"
+        }
+      ]
+    },
+    {
+      "slot": 9,
+      "targetAngle": 324.0,
+      "viewType": "three-quarter",
+      "halfWindow": 26.0,
+      "selectedFrame": 97,
+      "topCandidates": [
+        {
+          "index": 97,
+          "key": "car-test-5-premium-v2/candidates/frame-097.jpg",
+          "selectionAngle": 320.0,
+          "angleError": 4.0,
+          "preliminaryScore": 0.8084392757964916,
+          "slot": 9,
+          "totalScore": 0.8491,
+          "components": {
+            "angle": 0.8461538461538461,
+            "sharpness": 0.8281586357116159,
+            "exposure": 0.7438341379461225,
+            "segmentation": 1.0,
+            "viewpoint": 0.8613782702963141,
+            "perspective": 0.7404,
+            "framing": 0.9654247775265611,
+            "resolution": 0.7235294117647059
+          },
+          "measurements": {
+            "vehicleSize": 0.84125,
+            "blurRisk": 0.0,
+            "clippingRisk": 0.0,
+            "apparentPitchQuality": 0.7930869669959046,
+            "upperSurfaceRatio": 0.73,
+            "contactSpreadRatio": null,
+            "wheelSizeRatio": null,
+            "measuredViewType": "three-quarter",
+            "sourceVehicleWidthPx": 1230,
+            "sourceSize": [
+              1920,
+              1080
+            ],
+            "proxyBbox": [
+              228,
+              74,
+              843,
+              483
+            ],
+            "tireContactCount": 1
+          },
+          "selectionMethod": "sequence_fallback",
+          "targetAngle": 324.0,
+          "angleSource": "sequence_fallback",
+          "quality": 84.91,
+          "selectionConfidence": "high"
+        },
+        {
+          "index": 96,
+          "key": "car-test-5-premium-v2/candidates/frame-096.jpg",
+          "selectionAngle": 316.6666666666667,
+          "angleError": 7.333333333333314,
+          "preliminaryScore": 0.7954707694114016,
+          "slot": 9,
+          "totalScore": 0.8425,
+          "components": {
+            "angle": 0.7179487179487187,
+            "sharpness": 0.8623131643484386,
+            "exposure": 0.769219413587993,
+            "segmentation": 1.0,
+            "viewpoint": 0.8609459758551308,
+            "perspective": 0.7404,
+            "framing": 0.9645949338170403,
+            "resolution": 0.6952941176470588
+          },
+          "measurements": {
+            "vehicleSize": 0.79125,
+            "blurRisk": 0.0,
+            "clippingRisk": 0.0,
+            "apparentPitchQuality": 0.7926066398390342,
+            "upperSurfaceRatio": 0.731,
+            "contactSpreadRatio": null,
+            "wheelSizeRatio": null,
+            "measuredViewType": "three-quarter",
+            "sourceVehicleWidthPx": 1182,
+            "sourceSize": [
+              1920,
+              1080
+            ],
+            "proxyBbox": [
+              241,
+              75,
+              832,
+              480
+            ],
+            "tireContactCount": 1
+          },
+          "selectionMethod": "sequence_fallback"
+        },
+        {
+          "index": 95,
+          "key": "car-test-5-premium-v2/candidates/frame-095.jpg",
+          "selectionAngle": 313.3333333333333,
+          "angleError": 10.666666666666686,
+          "preliminaryScore": 0.7728136096602978,
+          "slot": 9,
+          "totalScore": 0.832,
+          "components": {
+            "angle": 0.589743589743589,
+            "sharpness": 0.8797612986508933,
+            "exposure": 0.8034329827231159,
+            "segmentation": 1.0,
+            "viewpoint": 0.8592987785448751,
+            "perspective": 0.7404,
+            "framing": 0.9654552982390485,
+            "resolution": 0.6611764705882353
+          },
+          "measurements": {
+            "vehicleSize": 0.7308333333333334,
+            "blurRisk": 0.0,
+            "clippingRisk": 0.0,
+            "apparentPitchQuality": 0.7907764206054169,
+            "upperSurfaceRatio": 0.732,
+            "contactSpreadRatio": null,
+            "wheelSizeRatio": null,
+            "measuredViewType": "three-quarter",
+            "sourceVehicleWidthPx": 1124,
+            "sourceSize": [
+              1920,
+              1080
+            ],
+            "proxyBbox": [
+              249,
+              75,
+              811,
+              477
+            ],
+            "tireContactCount": 1
+          },
+          "selectionMethod": "sequence_fallback"
+        },
+        {
+          "index": 98,
+          "key": "car-test-5-premium-v2/candidates/frame-098.jpg",
+          "selectionAngle": 323.3333333333333,
+          "angleError": 0.6666666666666856,
+          "preliminaryScore": 0.8379029021859926,
+          "slot": 9,
+          "totalScore": 0.7861,
+          "components": {
+            "angle": 0.9743589743589737,
+            "sharpness": 0.80411713131335,
+            "exposure": 0.7180766854812531,
+            "segmentation": 1.0,
+            "viewpoint": 0.5973240666334853,
+            "perspective": 0.6602824484752194,
+            "framing": 0.9641763148217121,
+            "resolution": 0.7552941176470588
+          },
+          "measurements": {
+            "vehicleSize": 0.8975,
+            "blurRisk": 0.0,
+            "clippingRisk": 0.0,
+            "apparentPitchQuality": 0.38807665464535274,
+            "upperSurfaceRatio": 0.722,
+            "contactSpreadRatio": 0.364,
+            "wheelSizeRatio": 1.731,
+            "measuredViewType": "three-quarter",
+            "sourceVehicleWidthPx": 1284,
+            "sourceSize": [
+              1920,
+              1080
+            ],
+            "proxyBbox": [
+              217,
+              70,
+              859,
+              485
+            ],
+            "tireContactCount": 2
+          },
+          "selectionMethod": "sequence_fallback"
+        },
+        {
+          "index": 101,
+          "key": "car-test-5-premium-v2/candidates/frame-101.jpg",
+          "selectionAngle": 333.3333333333333,
+          "angleError": 9.333333333333314,
+          "preliminaryScore": 0.7208328324117024,
+          "slot": 9,
+          "totalScore": 0.7477,
+          "components": {
+            "angle": 0.6410256410256417,
+            "sharpness": 0.7052612414586978,
+            "exposure": 0.6663932189044576,
+            "segmentation": 1.0,
+            "viewpoint": 0.65491394005398,
+            "perspective": 0.6529419038467764,
+            "framing": 0.977352949664716,
+            "resolution": 0.8564705882352941
+          },
+          "measurements": {
+            "vehicleSize": 0.9233333333333333,
+            "blurRisk": 0.0,
+            "clippingRisk": 0.0,
+            "apparentPitchQuality": 0.4799599886358256,
+            "upperSurfaceRatio": 0.733,
+            "contactSpreadRatio": 0.323,
+            "wheelSizeRatio": 1.803,
+            "measuredViewType": "three-quarter",
+            "sourceVehicleWidthPx": 1456,
+            "sourceSize": [
+              1920,
+              1080
+            ],
+            "proxyBbox": [
+              156,
+              77,
+              884,
+              508
+            ],
+            "tireContactCount": 2
+          },
+          "selectionMethod": "sequence_fallback"
+        }
+      ]
+    }
+  ]
+}

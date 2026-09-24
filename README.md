@@ -150,9 +150,13 @@ docker compose run --rm ai-worker python recompose.py jarmu-azonosito
 ## 10 Studio Photos
 
 A dashboard külön akciójából vagy a `/studio-photos/:vehicleId` oldalon indítható;
-nem helyettesíti a 36 képes viewert. A worker a kész session maszkjaiból 10
-körben elosztott, minőség szerint rangsorolt nézetet választ. Ha az eredeti
-candidate frame és a kiválasztási metadata rendelkezésre áll, a végleges
+nem helyettesíti a 36 képes viewert. Ha elérhető az eredeti capture frame-sorozat,
+a tíz 36°-onkénti célirány mindegyikéhez több jelöltet keres (alapból ±18°,
+háromnegyedes nézetnél ±26°). A jelölteket az autó régiójának élessége,
+expozíciója, maszk- és keretezési minősége, forrásfelbontása, valamint relatív
+nézőpont- és perspektívajelek alapján pontozza; a szöghiba a teljes pontszám
+csak 10%-a. Az egymáshoz túl közeli forrásframe-eket közös kiválasztás zárja ki.
+Ha az eredeti candidate frame és a kiválasztási metadata rendelkezésre áll, a végleges
 fotóhoz azt külön, az eredeti frame-ből dolgozó BiRefNet soft-matte ágon
 újraszegmentálja:
 a fő járműhöz kapcsolódó vékony elemeket megtartja, az izolált háttérfoltokat
@@ -161,9 +165,16 @@ futtat. Ez az ág nem használja a `rembg` bináris morfológiai mask post-proce
 a 360 viewer maszkjai változatlanok. Régi, forráskapcsolat nélküli sessionnél
 a tárolt maszk a biztonságos fallback. Az új matte a session már normalizált
 képének, szigorúan korlátozott luminancia-céljához igazodik, a karosszéria
-színárnyalatának módosítása nélkül. Ha van megbízható szenzorirány, tényleges irányszektorokban
-keres; egyébként a rendezett 36 képes kör szektoraiban. A COLMAP-kód a régi
-3D/splat ág része, a production viewerhez nem szolgáltat kamerametadata-t.
+színárnyalatának módosítása nélkül. A fotóválasztó opcionálisan elfogad tárolt
+COLMAP `images.txt` vagy kamera-póz JSON adatot; ennek hiányában a rendezett
+eredeti capture sorozatból becsül körirányt. A COLMAP tetszőleges koordináta-
+rendszere miatt a belőle származó magasság/távolság is relatív; a csak képből
+számolt `viewpoint_quality` pedig nem fizikai kameramagasság- vagy pitch-mérés.
+Hiányzó eredeti frame-sorozatnál megmarad a régi 36 tárolt maszkos fallback.
+Az export manifestje rögzíti a választási módot, a forrásframe-et, a szöghibát,
+a részpontszámokat és a bizonyosságot. A `<vehicleId>/studio-photos/` prefixben
+`selection-debug.json` és `selection-contact-sheet.jpg` segíti a tíz célirány
+legjobb jelöltjeinek ellenőrzését. A viewer és a 3D/splat feldolgozás változatlan.
 Az export 3840 × 2160-as JPEG-eket, manifestet és ZIP-et ment a MinIO
 `<vehicleId>/studio-photos/` prefixébe. A fotók platform nélküli, finom
 cyclorama hátteret, enyhén szürkés padlót, háromrétegű (ambient, karosszéria

@@ -12,6 +12,8 @@ from PIL import Image
 from processing.exposure_normalize import apply_exposure_plan, measure_exposure
 from processing.studio_compose import create_studio_image, robust_ground_anchor
 from processing.studio_detail import segment_studio_source
+from processing.studio_selection import (HERO_WINDOW_DEGREES, WINDOW_DEGREES,
+                                         classify_target_view, select_studio_source_views)
 from processing.target_lock import mask_profile
 
 EXPORT_COUNT = 10
@@ -113,7 +115,10 @@ def select_quality_views(candidates, count=EXPORT_COUNT, orbit_frames=None):
 
 def export_studio_photos(vehicle_id, read_mask, read_layout, save_object, progress=None,
                          frame_count=36, read_selection=None, read_source=None,
-                         predict_mask=None):
+                         predict_mask=None, candidate_catalog=None,
+                         read_candidate=None, camera_metadata=None,
+                         window_degrees=WINDOW_DEGREES,
+                         hero_window_degrees=HERO_WINDOW_DEGREES):
     """Generate separate JPEGs, a manifest and a downloadable ZIP.
 
     Storage callbacks make this testable without Redis, MinIO or the AI model.
@@ -137,6 +142,29 @@ def export_studio_photos(vehicle_id, read_mask, read_layout, save_object, progre
         candidates.append({'index': index, 'quality': round(quality, 2),
                            'angle': metadata.get('azimuthDegrees')})
     chosen_views = select_quality_views(candidates, orbit_frames=frame_count)
+    selection_method = chosen_views[0]['angleSource']
+    selection_diagnostics = None
+    if candidate_catalog and read_candidate and predict_mask:
+        try:
+            target_types = [classify_target_view(read_mask(index).convert('RGBA'))
+                            for index in select_studio_indices(frame_count)]
+            chosen_views, selection_diagnostics, contact_sheet = select_studio_source_views(
+                candidate_catalog, read_candidate, predict_mask,
+                target_types=target_types, camera_metadata=camera_metadata,
+                window_degrees=window_degrees,
+                hero_window_degrees=hero_window_degrees)
+            selection_method = selection_diagnostics['selectionMethod']
+            save_object(f'{vehicle_id}/studio-photos/selection-debug.json',
+                        json.dumps(selection_diagnostics, ensure_ascii=False).encode('utf-8'),
+                        'application/json')
+            save_object(f'{vehicle_id}/studio-photos/selection-contact-sheet.jpg',
+                        contact_sheet, 'image/jpeg')
+        except (OSError, ValueError, RuntimeError) as error:
+            # Older or incomplete captures retain the proven 36-mask export.
+            selection_diagnostics = {'selectionFailure': str(error)[:200]}
+    original_candidates = selection_method in ('COLMAP', 'sequence_fallback')
+    source_mappings = [item for item in selection.get('views', [])
+                       if isinstance(item.get('candidateFrame'), int)]
     usable_indexes = {item['index'] for item in candidates}
     uniform_indexes = select_studio_indices(frame_count)
     entries = []
@@ -144,11 +172,18 @@ def export_studio_photos(vehicle_id, read_mask, read_layout, save_object, progre
     with zipfile.ZipFile(archive, 'w', compression=zipfile.ZIP_STORED) as bundle:
         for number, view in enumerate(chosen_views, 1):
             source_index = view['index']
-            source = read_mask(source_index).convert('RGBA')
+            source_viewer_index = (min(source_mappings,
+                                       key=lambda item: abs(item['candidateFrame']-source_index))['viewerFrame']
+                                   if original_candidates and source_mappings else
+                                   min(frame_count, max(1, round((source_index-.5)*frame_count/
+                                                                  max(len(candidate_catalog or []), 1)+.5)))
+                                   if original_candidates else source_index)
+            source = read_mask(source_viewer_index).convert('RGBA')
             detail_metadata = {'sourceDetail': 'stored-mask'}
-            if read_source and predict_mask:
+            if (original_candidates and read_candidate and predict_mask) or (read_source and predict_mask):
                 try:
-                    original_bytes = read_source(source_index)
+                    original_bytes = (read_candidate(view['key']) if original_candidates
+                                      else read_source(source_index))
                     if original_bytes:
                         detailed, detail_metadata = segment_studio_source(
                             original_bytes, predict_mask)
@@ -172,14 +207,32 @@ def export_studio_photos(vehicle_id, read_mask, read_layout, save_object, progre
             key = f'{vehicle_id}/studio-photos/{filename}'
             save_object(key, data, 'image/jpeg')
             bundle.writestr(filename, data)
+            components = view.get('components', {})
             entries.append({'number': number, 'sourceFrame': source_index,
+                            'sourceViewerFrame': source_viewer_index,
+                            'sourceCandidateKey': view.get('key'),
                             'degrees': round(view['targetAngle'], 1),
                             'selectionAngle': round(view['selectionAngle'], 2),
                             'angleSource': view['angleSource'],
                             'qualityScore': view['quality'],
+                            'selectionMethod': selection_method,
+                            'angleError': round(view.get('angleError',
+                                                       _circular_distance(view['selectionAngle'],
+                                                                          view['targetAngle'])), 2),
+                            'selectionConfidence': view.get('selectionConfidence', 'medium'),
+                            'viewpointScore': round(components.get('viewpoint', .5), 3),
+                            'sharpnessScore': round(components.get('sharpness', .5), 3),
+                            'perspectiveScore': round(components.get('perspective', .5), 3),
+                            'framingScore': round(components.get('framing', .5), 3),
+                            'segmentationScore': round(components.get('segmentation', .5), 3),
+                            'exposureScore': round(components.get('exposure', .5), 3),
                             'file': filename, 'width': EXPORT_SIZE[0], 'height': EXPORT_SIZE[1],
-                            'selectionAdjusted': source_index != uniform_indexes[number-1],
-                            'fallbackUsed': uniform_indexes[number-1] not in usable_indexes,
+                            'selectionAdjusted': (source_index != uniform_indexes[number-1]
+                                                  if not original_candidates else
+                                                  source_index != 1+((number-1)*len(candidate_catalog))//EXPORT_COUNT),
+                            'fallbackUsed': (uniform_indexes[number-1] not in usable_indexes
+                                             if not original_candidates else
+                                             detail_metadata['sourceDetail'] == 'stored-mask'),
                             'sourceDetail': detail_metadata['sourceDetail'],
                             'detailPassUsed': detail_metadata.get('detailPassUsed', False),
                             'sourceDetailFallback': detail_metadata.get('sourceDetailFallback'),
@@ -197,6 +250,9 @@ def export_studio_photos(vehicle_id, read_mask, read_layout, save_object, progre
             if progress:
                 progress(number)
     manifest = {'vehicleId': vehicle_id, 'kind': 'studio-photos',
+                'selectionMethod': selection_method,
+                'selectionDiagnostics': ('selection-debug.json' if original_candidates else
+                                         selection_diagnostics),
                 'generatedAt': datetime.now(timezone.utc).isoformat(), 'count': len(entries),
                 'size': list(EXPORT_SIZE), 'photos': entries}
     save_object(f'{vehicle_id}/studio-photos/album.zip', archive.getvalue(), 'application/zip')

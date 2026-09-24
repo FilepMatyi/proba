@@ -1,6 +1,7 @@
 import io
 import json
 import os
+import re
 import time
 import uuid
 
@@ -495,6 +496,33 @@ def handle_studio_export(fields):
     selection_metadata = read_selection()
     by_viewer_frame = {item['viewerFrame']: item for item in selection_metadata.get('views', [])}
 
+    mapped_keys = [item.get('candidateKey', '') for item in selection_metadata.get('views', [])]
+    mapped_keys = [key for key in mapped_keys
+                   if re.fullmatch(r'[A-Za-z0-9_-]+/candidates/frame-\d+\.jpg', key)]
+    candidate_source_id = (mapped_keys[0].split('/candidates/')[0]
+                           if mapped_keys else vehicle_id)
+    prefix = f'{candidate_source_id}/candidates/frame-'
+    candidate_catalog = []
+    for item in minio_client.list_objects(RAW_BUCKET, prefix=prefix, recursive=True):
+        match = re.fullmatch(re.escape(prefix)+r'(\d+)\.jpg', item.object_name)
+        if match:
+            candidate_catalog.append({'index': int(match.group(1)), 'key': item.object_name})
+    candidate_catalog.sort(key=lambda item: item['index'])
+
+    camera_metadata = None
+    for source_id in dict.fromkeys((candidate_source_id, vehicle_id)):
+        for bucket, key in ((RAW_BUCKET, f'{source_id}/candidates/camera-poses.json'),
+                            (RAW_BUCKET, f'{source_id}/colmap/images.txt'),
+                            (PROCESSED_BUCKET, f'{source_id}/colmap/images.txt'),
+                            (PROCESSED_BUCKET, f'{source_id}/colmap/sparse/0/images.txt')):
+            try:
+                camera_metadata = _download_bytes(bucket, key)
+                break
+            except Exception:
+                continue
+        if camera_metadata:
+            break
+
     def read_source(index):
         item = by_viewer_frame.get(index)
         if not item:
@@ -521,7 +549,12 @@ def handle_studio_export(fields):
     manifest = export_studio_photos(vehicle_id, read_mask, read_layout, save_object, progress,
                                     frame_count=TARGET_FRAMES,
                                     read_selection=lambda: selection_metadata,
-                                    read_source=read_source, predict_mask=predict_mask)
+                                    read_source=read_source, predict_mask=predict_mask,
+                                    candidate_catalog=candidate_catalog,
+                                    read_candidate=lambda key: _download_bytes(RAW_BUCKET, key),
+                                    camera_metadata=camera_metadata,
+                                    window_degrees=float(os.getenv('STUDIO_WINDOW_DEGREES', '18')),
+                                    hero_window_degrees=float(os.getenv('STUDIO_HERO_WINDOW_DEGREES', '26')))
     redis_client.hset(state_key, mapping={'status': 'ready', 'completed': manifest['count']})
     redis_client.expire(state_key, 7*24*3600)
 
