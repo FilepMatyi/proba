@@ -7,6 +7,8 @@ from functools import lru_cache
 
 from processing.stabilization import estimate_wheel_contacts
 from processing.ground_contacts import silhouette_contacts, tire_contacts
+from processing.source_detail import decontaminate_mask_edges
+from processing.studio_photo_look import cyclorama_template, floor_reflection, photo_shadow_layers
 
 # ─── Canvas constants ────────────────────────────────────────────────
 # Fixed canvas for ALL 36 frames → no jitter when the viewer flips frames.
@@ -88,15 +90,17 @@ def robust_ground_anchor(alpha_arr):
     return int(round(np.percentile(bottom[present], 98)))
 
 
-def studio_placement(image_size, anchor_y, canvas_size, target_height_ratio=1.):
+def studio_placement(image_size, anchor_y, canvas_size, target_height_ratio=1., fill_ratio=CAR_HEIGHT_FILL):
     """Return proportional scale and translation; no angle or image warp."""
     width, height = image_size
     canvas_w, canvas_h = canvas_size
     ratio = max(.84, min(1.02, float(target_height_ratio)))
-    scale = min(canvas_h*CAR_HEIGHT_FILL*ratio/max(height, 1), canvas_w*.90/max(width, 1))
+    scale = min(canvas_h*fill_ratio*ratio/max(height, 1), canvas_w*.90/max(width, 1))
     scaled_w, scaled_h = max(1, round(width*scale)), max(1, round(height*scale))
     floor = _platform_geometry(canvas_w, canvas_h)
-    ground_y = round(floor['center_y']+floor['radius_y']*.22)
+    # Place the near tire deeper on the visible floor so the farther tire in
+    # a three-quarter view does not sit above the platform's back edge.
+    ground_y = round(floor['center_y']+floor['radius_y']*.32)
     x = (canvas_w-scaled_w)//2
     y = ground_y-round(float(anchor_y)*scaled_h/max(height, 1))
     return (scaled_w, scaled_h), (x, y), ground_y
@@ -313,6 +317,55 @@ def _enhance_vehicle_detail(vehicle):
     rgb = ImageEnhance.Contrast(rgb).enhance(1.025)
     rgb = rgb.filter(ImageFilter.UnsharpMask(radius=1.15, percent=125, threshold=3))
     return Image.merge('RGBA', (*rgb.split(), alpha))
+
+
+def _harmonize_vehicle_color(vehicle, strength=1.):
+    """Conservatively tame blue outdoor glass reflections and hard hotspots.
+
+    This is a tonal adjustment, not synthetic relighting; opaque body colour
+    and all alpha values remain intact.
+    """
+    rgba = np.array(vehicle.convert('RGBA'), dtype=np.uint8)
+    rgb = rgba[:, :, :3]
+    h = rgba.shape[0]
+    red = rgb[:, :, 0].astype(np.float32)
+    green = rgb[:, :, 1].astype(np.float32)
+    blue = rgb[:, :, 2].astype(np.float32)
+    upper = np.arange(h)[:, None] < h*.60
+    glass_blue = (upper & (rgba[:, :, 3] >= 180) & (blue > red+14)
+                  & (blue > green+8) & (blue < 220) & (blue > 35))
+    rgb[:, :, 2][glass_blue] = np.clip(
+        blue[glass_blue] - np.minimum(18., (blue[glass_blue]-green[glass_blue])*.30)*strength,
+        0, 255).astype(np.uint8)
+    # Reduce only extreme channel highlights, avoiding global contrast loss.
+    highlight = (rgba[:, :, 3] >= 180) & (rgb.max(axis=2) > 235)
+    for channel in range(3):
+        values = rgb[:, :, channel][highlight].astype(np.float32)
+        rgb[:, :, channel][highlight] = np.clip(
+            np.where(values > 235, 235+(values-235)*(1.-.18*strength), values), 0, 255
+        ).astype(np.uint8)
+    return Image.fromarray(rgba, 'RGBA')
+
+
+@lru_cache(maxsize=2)
+def _cyclorama_template(cw, ch):
+    """Seamless neutral backdrop and floor, with no drawn platform or hub."""
+    return cyclorama_template(cw, ch)
+
+
+def _draw_body_shadow(canvas, vehicle_size, car_x, ground_y, contacts):
+    """Wide soft body occlusion follows the same final translation as the car."""
+    width, height = vehicle_size
+    center_y = (sum(item['canvasY'] for item in contacts)/len(contacts)) if contacts else ground_y
+    center_y = min(center_y+height*.025, ground_y+height*.04)
+    layer = Image.new('RGBA', canvas.size, (0, 0, 0, 0))
+    half_w, half_h = width*.41, max(10., height*.065)
+    center_x = car_x+width/2
+    ImageDraw.Draw(layer).ellipse((center_x-half_w, center_y-half_h,
+                                   center_x+half_w, center_y+half_h),
+                                  fill=(17, 19, 20, 50))
+    layer = layer.filter(ImageFilter.GaussianBlur(radius=max(6, round(canvas.height*.016))))
+    canvas.paste(layer, (0, 0), layer)
 
 
 @lru_cache(maxsize=4)
@@ -539,14 +592,14 @@ def _draw_reflection(
 # ═══════════════════════════════════════════════════════════════════════
 
 def create_studio_image(vehicle_image, global_max_h=None, target_height_ratio=None,
-                        canvas_size=None):
+                        canvas_size=None, style='viewer'):
     """
-    Place vehicle onto a studio turntable.
+    Place vehicle onto the selected studio background.
 
     The mask bounding box controls horizontal framing. A robust lower mask
     anchor is translated to the fixed floor level; the vehicle is never
-    rotated, sheared or warped from wheel positions. The same composition is
-    used for the viewer and the separate high-resolution studio export.
+    rotated, sheared or warped from wheel positions. The 10-photo export has
+    its own floor treatment; the viewer retains its turntable appearance.
 
     Args:
         vehicle_image: PIL RGBA Image with transparent background
@@ -558,6 +611,8 @@ def create_studio_image(vehicle_image, global_max_h=None, target_height_ratio=No
     Returns:
         PIL RGB Image on studio canvas
     """
+    if style not in ('viewer', 'photo'):
+        raise ValueError('Unknown studio composition style')
     if vehicle_image.mode != 'RGBA':
         vehicle_image = vehicle_image.convert('RGBA')
 
@@ -565,6 +620,7 @@ def create_studio_image(vehicle_image, global_max_h=None, target_height_ratio=No
     bbox = vehicle_image.getbbox()
     if bbox:
         vehicle_image = vehicle_image.crop(bbox)
+        vehicle_image = decontaminate_mask_edges(vehicle_image)
 
     cw, ch = canvas_size or (CANVAS_W, CANVAS_H)
 
@@ -573,33 +629,50 @@ def create_studio_image(vehicle_image, global_max_h=None, target_height_ratio=No
     source_alpha = np.asarray(vehicle_image.getchannel('A'))
     anchor = robust_ground_anchor(source_alpha)
     if anchor is None:
-        platform = _platform_geometry(cw, ch)
-        canvas = _make_background(cw, ch, platform['top_y'])
-        _draw_turntable(canvas, cw, ch, platform)
+        canvas = (_cyclorama_template(cw, ch).copy() if style == 'photo'
+                  else _make_background(cw, ch, _platform_geometry(cw, ch)['top_y']))
+        if style == 'viewer':
+            _draw_turntable(canvas, cw, ch)
         return canvas
+    source_contacts = tire_contacts(vehicle_image)
+    # Tire detections control shadow placement only: switching between a
+    # confident and an occluded wheel must not move the car between frames.
     dimensions, (car_x, car_y), ground_y = studio_placement(
         vehicle_image.size, anchor, (cw, ch),
         1. if target_height_ratio is None else target_height_ratio,
+        fill_ratio=.70 if style == 'photo' else CAR_HEIGHT_FILL,
     )
     vehicle_scaled = _enhance_vehicle_detail(vehicle_image.resize(dimensions, Image.Resampling.LANCZOS))
+    vehicle_scaled = _harmonize_vehicle_color(vehicle_scaled, 1. if style == 'photo' else .55)
     platform = _platform_geometry(cw, ch)
-    canvas = _make_background(cw, ch, platform['top_y'])
-    _draw_turntable(canvas, cw, ch, platform)
+    if style == 'photo':
+        canvas = _cyclorama_template(cw, ch).copy()
+    else:
+        canvas = _make_background(cw, ch, platform['top_y'])
+        _draw_turntable(canvas, cw, ch, platform)
     # Contact shadows may follow independently visible tires, but their
     # positions never change the vehicle placement or its orientation.
-    tire_shadows = tire_contacts(vehicle_scaled)
-    if tire_shadows:
-        anchors = [{'canvasX': car_x+item['x'], 'canvasY': car_y+item['y'],
-                    'radius': item['radius']} for item in tire_shadows]
-        _draw_grounded_shadow(canvas, vehicle_scaled, anchors)
+    scale_x, scale_y = dimensions[0]/vehicle_image.width, dimensions[1]/vehicle_image.height
+    anchors = [{'canvasX': car_x+item['x']*scale_x, 'canvasY': car_y+item['y']*scale_y,
+                'radius': item['radius']*scale_x} for item in source_contacts]
+    if style == 'photo':
+        reflection = floor_reflection(vehicle_scaled, ground_y-car_y, ch-ground_y)
+        canvas.paste(reflection, (car_x, ground_y), reflection)
+        for shadow_layer, location in photo_shadow_layers((cw, ch), dimensions,
+                                                           car_x, ground_y, anchors):
+            canvas.paste(shadow_layer, location, shadow_layer)
     else:
+        _draw_body_shadow(canvas, dimensions, car_x, ground_y, anchors)
+    if style == 'viewer' and anchors:
+        _draw_grounded_shadow(canvas, vehicle_scaled, anchors)
+    elif style == 'viewer':
         shadow = Image.new('RGBA', (cw, ch), (0, 0, 0, 0))
         sd = ImageDraw.Draw(shadow)
         half_w = dimensions[0]*.38
         half_h = max(9, dimensions[1]*.035)
         center_x = cw/2
         sd.ellipse((center_x-half_w, ground_y-half_h, center_x+half_w, ground_y+half_h),
-                   fill=(16, 20, 20, 62))
+                   fill=(16, 20, 20, 38))
         shadow = shadow.filter(ImageFilter.GaussianBlur(radius=max(6, round(ch*.012))))
         canvas.paste(shadow, (0, 0), shadow)
     canvas.paste(vehicle_scaled, (car_x, car_y), vehicle_scaled)

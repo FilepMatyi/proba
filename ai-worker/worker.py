@@ -169,6 +169,7 @@ def handle_select_frames(fields):
         best_index = None
         best_score = float('-inf')
         best_quality = None
+        best_candidate = None
         for candidate in available:
             candidate_index = candidate['index']
             try:
@@ -185,6 +186,7 @@ def handle_select_frames(fields):
                     best_score = score
                     best_index = candidate_index
                     best_quality = quality
+                    best_candidate = candidate
             except Exception as error:
                 print(f'[{vehicle_id}] Candidate {candidate_index + 1} could not be scored: {error}')
 
@@ -197,6 +199,9 @@ def handle_select_frames(fields):
             'outputIndex': output_offset + 1,
             'candidateIndex': best_index,
             'quality': _rounded_metrics(best_quality),
+            'sensorAzimuth': best_candidate.get('unwrapped_alpha'),
+            'poseDeviation': abs(best_candidate.get('beta', median_beta) - median_beta)
+                             + abs(best_candidate.get('gamma', median_gamma) - median_gamma),
         })
 
     sensor_assisted = bool(
@@ -207,6 +212,24 @@ def handle_select_frames(fields):
         selected_details, sensor_assisted, frame_count
     )
     metrics['stabilizationInput'] = {'mode': 'mask-translation', 'rotationDegrees': 0}
+    azimuth_available = sensor_assisted and all(item['sensorAzimuth'] is not None for item in selected_details)
+    azimuth_start = selected_details[0]['sensorAzimuth'] if azimuth_available else None
+    azimuth_direction = (1 if selected_details[-1]['sensorAzimuth'] >= azimuth_start else -1) if azimuth_available else 1
+    selection_manifest = {
+        'source': 'sensor' if azimuth_available else 'ordered-frames',
+        'candidateFrames': frame_count,
+        'views': [{
+            'viewerFrame': item['outputIndex'],
+            'candidateFrame': item['candidateIndex']+1,
+            'qualityScore': item['quality']['score'],
+            'poseDeviation': round(item['poseDeviation'], 3),
+            'azimuthDegrees': (round(((item['sensorAzimuth']-azimuth_start)*azimuth_direction) % 360., 3)
+                               if azimuth_available else None),
+        } for item in selected_details],
+    }
+    manifest_bytes = json.dumps(selection_manifest).encode('utf-8')
+    minio_client.put_object(RAW_BUCKET, f'{vehicle_id}/selection.json', io.BytesIO(manifest_bytes),
+                            len(manifest_bytes), content_type='application/json')
     redis_client.setex(
         f'vehicle:{vehicle_id}:selection_quality',
         STATE_TTL_SECONDS,
@@ -461,6 +484,14 @@ def handle_studio_export(fields):
         except (TypeError, ValueError):
             return {}
 
+    def read_selection():
+        try:
+            return json.loads(_download_bytes(RAW_BUCKET, f'{vehicle_id}/selection.json'))
+        except Exception:
+            # Sessions captured before selection metadata was introduced still
+            # have ordered masks and receive foreground-quality ranking.
+            return {}
+
     def save_object(key, data, content_type):
         minio_client.put_object(PROCESSED_BUCKET, key, io.BytesIO(data), len(data), content_type=content_type)
 
@@ -469,7 +500,7 @@ def handle_studio_export(fields):
         redis_client.expire(state_key, 7*24*3600)
 
     manifest = export_studio_photos(vehicle_id, read_mask, read_layout, save_object, progress,
-                                    frame_count=TARGET_FRAMES)
+                                    frame_count=TARGET_FRAMES, read_selection=read_selection)
     redis_client.hset(state_key, mapping={'status': 'ready', 'completed': manifest['count']})
     redis_client.expire(state_key, 7*24*3600)
 

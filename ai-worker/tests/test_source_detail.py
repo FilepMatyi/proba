@@ -8,7 +8,7 @@ from PIL import Image, ImageDraw
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from processing.source_detail import attach_mask_to_source
+from processing.source_detail import attach_mask_to_source, decontaminate_mask_edges
 
 
 class SourceDetailTests(unittest.TestCase):
@@ -38,6 +38,16 @@ class SourceDetailTests(unittest.TestCase):
         restored = attach_mask_to_source(source_buffer.getvalue(), inference, max_side=2400)
 
         self.assertEqual(restored.size, (2400, 1200))
+
+    def test_edge_decontamination_preserves_alpha_and_opaque_paint(self):
+        image = Image.new('RGBA', (48, 40), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(image)
+        draw.rectangle((9, 8, 38, 31), fill=(60, 100, 65, 255))
+        draw.rectangle((8, 8, 8, 31), fill=(90, 155, 225, 115))
+        corrected = decontaminate_mask_edges(image)
+        self.assertEqual(corrected.getchannel('A').tobytes(), image.getchannel('A').tobytes())
+        self.assertEqual(corrected.getpixel((20, 20)), image.getpixel((20, 20)))
+        self.assertLess(corrected.getpixel((8, 20))[2], image.getpixel((8, 20))[2])
 
 
 if __name__ == '__main__':

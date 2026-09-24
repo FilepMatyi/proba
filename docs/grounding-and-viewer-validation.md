@@ -8,10 +8,13 @@
 - Each final image is proportionally scaled, centered from the mask bounding
   box, and translated so a robust lower silhouette anchor meets a fixed floor
   level. Narrow tow hitches and isolated alpha dust do not define that anchor.
-- Tire locations may position contact shadows, but they never rotate or warp
-  the vehicle. The wider fixed turntable surface supports farther tires in
-  three-quarter views. A single 2D cutout still cannot recover camera height
-  or true 3D geometry; inspect difficult views visually.
+- Robust supported mask-bottom runs define the vertical anchor. Reliable tire
+  contacts position shadows only, so intermittent detections cannot move,
+  rotate or warp the vehicle. A broad soft body shadow
+  follows the same translation. The viewer keeps its wider turntable surface;
+  the separate photo export uses a seamless cyclorama without the drawn hub.
+  A single 2D cutout still cannot recover camera height or true 3D geometry;
+  inspect difficult views visually.
 
 ## Viewer
 

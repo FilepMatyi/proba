@@ -38,14 +38,16 @@ export default function StudioPhotos() {
         <h1>10 Studio Photos</h1>
         <p>{vehicleId} · 10 körben elosztott, 3840 × 2160 képpontos stúdiófotó</p>
       </div>
-      {result.status === 'ready' && <a className="button button-primary" href={studioPhotoUrl(vehicleId, 'album.zip')}>
+      {result.status === 'ready' && <a className="button button-primary" href={studioPhotoUrl(vehicleId, 'album.zip', result.generatedAt)}>
         <Download size={18} /> Mind a 10 letöltése
       </a>}
     </header>
     <section className="studio-export-intro">
       <Sparkles size={27} />
-      <div><h2>Különálló fotók az autóról</h2><p>A 36 nézetes interaktív bemutató mellett készülő, egyenként felhasználható stúdióképek.</p></div>
+      <div><h2>Különálló fotók az autóról</h2><p>A 36 nézetes interaktív bemutató mellett készülő, egyenként felhasználható, letisztult stúdióképek.</p></div>
     </section>
+    {result.status === 'ready' && result.photos?.some(photo => photo.angleSource !== 'sensor') &&
+      <p className="studio-export-note">Szenzoros irányadat nélkül a jelölt szögek közelítő értékek; a rendszer minden irányból a legjobb használható képet választja.</p>}
     {error && <p className="dashboard-alert">{error}</p>}
     {result.status === 'failed' && <p className="dashboard-alert">{result.error || 'Az export sikertelen volt. Újraindíthatod.'}</p>}
     {(result.status === 'not_started' || result.status === 'failed') &&
@@ -56,9 +58,9 @@ export default function StudioPhotos() {
     {result.status === 'ready' && <div className="studio-photo-grid">
       {(result.photos || Array.from({ length: 10 }, (_, index) => ({ number: index+1, file: `${String(index+1).padStart(2, '0')}.jpg`, degrees: index*36 }))).map(photo =>
         <article className="studio-photo-card" key={photo.number}>
-          <img src={studioPhotoUrl(vehicleId, photo.file)} alt={`${vehicleId} – ${photo.degrees} fokos stúdiófotó`} loading="lazy" />
-          <div><span>{String(photo.number).padStart(2, '0')} · {photo.degrees}°</span>
-            <a href={studioPhotoUrl(vehicleId, photo.file)} download><Download size={16} /> Letöltés</a></div>
+          <img src={studioPhotoUrl(vehicleId, photo.file, result.generatedAt)} alt={`${vehicleId} – ${photo.degrees} fokos stúdiófotó`} loading="lazy" />
+          <div><span>{String(photo.number).padStart(2, '0')} · {photo.angleSource === 'sensor' ? '' : '≈'}{photo.degrees}°</span>
+            <a href={studioPhotoUrl(vehicleId, photo.file, result.generatedAt)} download><Download size={16} /> Letöltés</a></div>
         </article>)}</div>}
   </main>;
 }

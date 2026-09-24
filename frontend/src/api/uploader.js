@@ -58,6 +58,7 @@ export async function generateStudioPhotos(vehicleId) {
   }));
 }
 
-export function studioPhotoUrl(vehicleId, filename) {
-  return `${API_BASE_URL}/vehicles/${encodeURIComponent(vehicleId)}/studio-photos/files/${filename}`;
+export function studioPhotoUrl(vehicleId, filename, revision) {
+  const url = `${API_BASE_URL}/vehicles/${encodeURIComponent(vehicleId)}/studio-photos/files/${filename}`;
+  return revision ? `${url}?v=${encodeURIComponent(revision)}` : url;
 }

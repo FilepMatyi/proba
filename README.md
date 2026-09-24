@@ -8,9 +8,9 @@ Mobilos videóból automatikusan előállított, 36 nézetes prémium autóbemut
 2. Egy 30–40 másodperces videót készít, miközben körbejárja az autót.
 3. A backend 108 jelölt képkockát nyer ki a videóból.
 4. A worker a tájolás, élesség, expozíció, kontraszt és kiégett részletek alapján sorrendtartóan kiválaszt 36 egyedi nézetet.
-5. A képeken képi horizontbecslés, körkörösen simított dőléskorrekció, céljármű-zárral védett háttéreltávolítás, expozíció-egységesítés és stabil méretezésű, kontaktárnyékos stúdiókompozíció fut.
-6. Minden nézethez 1280 px-es gyorsnézet és 2400 px-es HD kép készül.
-7. A dashboard élőben jelzi az állapotot és a minőségi pontszámot, majd megosztható és beágyazható 360° viewer készül.
+5. A képeken céljármű-zárral védett háttéreltávolítás, expozíció-egységesítés, forgatás nélküli pozicionálás, maszkalapú talajérintés és többrétegű árnyék fut.
+6. Minden nézethez 1280 × 720-as gyorsnézet és 3200 × 1800-as HD kép készül.
+7. A dashboard élőben jelzi az állapotot és a minőségi pontszámot, majd megosztható és beágyazható 360° viewer készül. Külön akcióval 10 darab 3840 × 2160-as stúdiófotó is exportálható.
 
 ## Architektúra
 
@@ -27,6 +27,7 @@ Redis Streams
 Python workers ── QA + select 36 ── remove background ── compose studio
    │
    ├── preview + HD JPEGs ── MinIO
+   ├── külön 10 Studio Photos job ── 4K JPEG + ZIP ── MinIO
    └── progress + quality callback ── Express/Prisma
                                 │
                                 ▼
@@ -100,6 +101,9 @@ AI_WORKER_THREADS=4
 ONNX_DISABLE_CPU_ARENA=true
 ```
 
+A `MAX_ROLL_CORRECTION` és `MAX_VEHICLE_ROLL_CORRECTION` régi diagnosztikai
+beállítások; az aktív viewer- és fotókompozíció nem forgatja a járművet.
+
 A produkciós worker image csak az aktív feldolgozási út függőségeit tartalmazza. A korábbi, alapértelmezetten kikapcsolt FastSAM- és Real-ESRGAN-kísérletek nincsenek a képbe építve, mert a Torch/Ultralytics csomaglánc egy második OpenCV-disztribúciót telepített és bizonytalanná tette a buildet.
 
 A `birefnet-general-lite` egyetlen workeres alapbeállítással fut: egy 1080p inference átmenetileg több GB memóriát használhat, ezért 8 GB-os Docker Desktop keretnél ne emeld a replikaszámot külön mérés nélkül. Nagyobb szerveren a worker külön gépekre skálázható.
@@ -147,12 +151,23 @@ docker compose run --rm ai-worker python recompose.py jarmu-azonosito
 
 A dashboard külön akciójából vagy a `/studio-photos/:vehicleId` oldalon indítható;
 nem helyettesíti a 36 képes viewert. A worker a kész session átlátszó,
-expozíció-normalizált képeiből determinisztikusan 10 körben elosztott nézetet
-választ, és 3840 × 2160-as JPEG-eket, manifestet és ZIP-et ment a MinIO
-`<vehicleId>/studio-photos/` prefixébe. A stúdiókompozíció a teljes maszk
-közepét és robusztus alsó érintkezési szintjét használja; az autót nem forgatja
-kerékpontok alapján. A 4K kimeneti méret önmagában nem tudja visszaállítani az
-eredeti videóból hiányzó karc- vagy horpadásrészleteket.
+expozíció-normalizált képeiből 10 körben elosztott, minőség szerint rangsorolt
+nézetet választ. Ha van megbízható szenzorirány, tényleges irányszektorokban
+keres; egyébként a rendezett 36 képes kör szektoraiban. A COLMAP-kód a régi
+3D/splat ág része, a production viewerhez nem szolgáltat kamerametadata-t.
+Az export 3840 × 2160-as JPEG-eket, manifestet és ZIP-et ment a MinIO
+`<vehicleId>/studio-photos/` prefixébe. A fotók platform nélküli, finom
+cyclorama hátteret, enyhén szürkés padlót, háromrétegű (ambient, karosszéria
+alatti és gumikontaktus) árnyékot és nagyon halvány, lefelé elmosódó
+padlóreflexiót kapnak. Ezek a fotó-export saját effektjei; a viewer
+megjelenítése változatlan. A forrásképek a meglévő expozíció-normalizálást és
+maszkél-tisztítást használják, a fotó-kompozíció pedig óvatosan visszafogja az
+erős kék üvegtükröződést és a kiégett csúcsfényeket. A maszkon becsült,
+keskeny vonóhorgot kiszűrő alsó érintkezési szint fix padlóvonalra kerül,
+eltolással és
+kerékpont-alapú forgatás nélkül. A 4K kimeneti méret
+önmagában nem tudja visszaállítani az eredeti videóból hiányzó karc- vagy
+horpadásrészleteket.
 
 ## Ellenőrzések
 

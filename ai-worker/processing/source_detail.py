@@ -1,11 +1,39 @@
 import io
 import os
 
+import cv2
 import numpy as np
 from PIL import Image, ImageOps
 
 
 MAX_DETAIL_SIDE = max(1920, int(os.getenv('MAX_DETAIL_SIDE', '3840')))
+
+
+def decontaminate_mask_edges(image):
+    """Pull only translucent fringe colour toward nearby solid vehicle RGB.
+
+    Alpha and fully opaque details stay untouched. Small unsupported structures
+    such as roof-rack bars are preserved when no nearby solid interior exists.
+    """
+    rgba = np.array(image.convert('RGBA'), dtype=np.uint8)
+    alpha = rgba[:, :, 3]
+    fringe = (alpha >= 12) & (alpha < 225)
+    if not fringe.any():
+        return Image.fromarray(rgba, 'RGBA')
+    support = (alpha >= 225).astype(np.float32)
+    weight = cv2.GaussianBlur(support, (0, 0), 1.6)
+    editable = fringe & (weight > .04)
+    if not editable.any():
+        return Image.fromarray(rgba, 'RGBA')
+    blend = np.zeros_like(weight)
+    blend[editable] = .72*(1.-alpha[editable].astype(np.float32)/255.)
+    for channel in range(3):
+        original = rgba[:, :, channel]
+        nearby = cv2.GaussianBlur(original.astype(np.float32)*support, (0, 0), 1.6)
+        inferred = nearby[editable]/weight[editable]
+        correction = np.clip(inferred-original[editable], -48., 48.)
+        original[editable] = np.clip(original[editable]+correction*blend[editable], 0, 255).astype(np.uint8)
+    return Image.fromarray(rgba, 'RGBA')
 
 
 def attach_mask_to_source(source_bytes, masked_inference, max_side=None):
