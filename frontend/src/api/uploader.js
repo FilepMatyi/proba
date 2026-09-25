@@ -62,3 +62,30 @@ export function studioPhotoUrl(vehicleId, filename, revision) {
   const url = `${API_BASE_URL}/vehicles/${encodeURIComponent(vehicleId)}/studio-photos/files/${filename}`;
   return revision ? `${url}?v=${encodeURIComponent(revision)}` : url;
 }
+
+export async function startGuidedStudio(vehicleId) {
+  return parseResponse(await fetch(`${API_BASE_URL}/vehicles/${encodeURIComponent(vehicleId)}/guided-studio`, {
+    method: 'POST',
+  }));
+}
+
+export async function getGuidedStudio(vehicleId) {
+  return parseResponse(await fetch(`${API_BASE_URL}/vehicles/${encodeURIComponent(vehicleId)}/guided-studio`));
+}
+
+export async function uploadGuidedPhoto(vehicleId, captureId, sector, blob, metadata) {
+  const body = new FormData();
+  body.append('photo', blob, blob.type === 'image/png' ? 'capture.png' : 'capture.jpg');
+  body.append('captureId', captureId);
+  body.append('metadata', JSON.stringify(metadata));
+  return parseResponse(await fetch(`${API_BASE_URL}/vehicles/${encodeURIComponent(vehicleId)}/guided-studio/photos/${sector}`, {
+    method: 'PUT', body,
+  }));
+}
+
+export async function processGuidedStudio(vehicleId, captureId) {
+  return parseResponse(await fetch(`${API_BASE_URL}/vehicles/${encodeURIComponent(vehicleId)}/guided-studio/process`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ captureId }),
+  }));
+}

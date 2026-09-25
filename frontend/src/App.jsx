@@ -5,6 +5,7 @@ import { AlertTriangle, ArrowRight, Check, ChevronRight, Gauge, LayoutDashboard,
 import CameraView from './components/CameraView';
 import Dashboard from './components/Dashboard';
 import StudioPhotos from './components/StudioPhotos';
+import GuidedStudioCapture from './components/GuidedStudioCapture';
 import { getSession, uploadVideo } from './api/uploader';
 import './styles.css';
 
@@ -205,6 +206,11 @@ function CaptureFlow() {
             </div>
             {vehicleId && !isVehicleIdValid && <small>Csak betű, szám, kötőjel és aláhúzás használható.</small>}
           </form>
+          <button className="button button-secondary guided-home-action" disabled={!isVehicleIdValid}
+            onClick={() => navigate(`/guided-studio/${normalizedVehicleId}`)}>
+            <Camera size={18} /> 10 Studio Photos · vezetett fotózás
+          </button>
+          <p className="guided-home-note">Külön mód: tíz automatikus állókép, a 360° videó érintetlen marad.</p>
         </div>
 
         <div className="process-panel" aria-label="A feldolgozás lépései">
@@ -229,6 +235,7 @@ export default function App() {
         <Route path="/" element={<CaptureFlow />} />
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/studio-photos/:vehicleId" element={<StudioPhotos />} />
+        <Route path="/guided-studio/:vehicleId" element={<GuidedStudioCapture />} />
       </Routes>
     </BrowserRouter>
   );

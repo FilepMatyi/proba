@@ -9,6 +9,7 @@ const viewerRoutes = require('./routes/viewer');
 const internalRoutes = require('./routes/internal');
 const sessionsRoutes = require('./routes/sessions');
 const studioPhotosRoutes = require('./routes/studioPhotos');
+const guidedStudioRoutes = require('./routes/guidedStudio');
 
 const app = express();
 
@@ -24,7 +25,7 @@ app.use((req, res, next) => {
 
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', config.allowedOrigin);
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Content-Type, X-Internal-Token');
   if (req.method === 'OPTIONS') {
     return res.sendStatus(200);
@@ -35,6 +36,7 @@ app.use((req, res, next) => {
 app.use('/api', photoRoutes);
 app.use('/api', sessionsRoutes);
 app.use('/api', studioPhotosRoutes);
+app.use('/api', guidedStudioRoutes);
 app.use('/internal', internalRoutes);
 
 // Serve static frontend files

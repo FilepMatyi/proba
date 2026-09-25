@@ -6,7 +6,7 @@
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
     "test": "node --test test/*.test.js",
-    "check": "node --check src/index.js && node --check src/routes/photos.js && node --check src/routes/viewer.js && node --check src/routes/studioPhotos.js"
+    "check": "node --check src/index.js && node --check src/routes/photos.js && node --check src/routes/viewer.js && node --check src/routes/studioPhotos.js && node --check src/routes/guidedStudio.js"
   },
   "dependencies": {
     "@prisma/client": "^5.7.1",

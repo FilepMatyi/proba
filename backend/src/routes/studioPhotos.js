@@ -2,7 +2,7 @@ const express = require('express');
 const redis = require('../lib/redisConnection');
 const prisma = require('../lib/prisma');
 const photoQueue = require('../queues/photoQueue');
-const { minioClient, PROCESSED_BUCKET } = require('../lib/minioClient');
+const { minioClient, RAW_BUCKET, PROCESSED_BUCKET } = require('../lib/minioClient');
 const { normalizeVehicleId } = require('../lib/vehicleId');
 
 const router = express.Router();
@@ -25,15 +25,24 @@ router.get('/vehicles/:vehicleId/studio-photos', async (req, res) => {
     const vehicleId = normalizeVehicleId(req.params.vehicleId);
     if (!vehicleId) return res.status(400).json({ error: 'Invalid vehicle ID' });
     const session = await prisma.vehicleSession.findUnique({ where: { vehicleId } });
-    if (!session) return res.status(404).json({ error: 'Session not found' });
+    let guided = false;
+    if (!session) {
+      try { await minioClient.statObject(RAW_BUCKET, `${vehicleId}/guided-studio/session.json`); guided = true; }
+      catch (error) {
+        if (['NoSuchKey', 'NotFound'].includes(error.code)) return res.status(404).json({ error: 'Session not found' });
+        throw error;
+      }
+    }
     const state = await redis.hgetall(`vehicle:${vehicleId}:studio_photos`);
     if (state.status === 'processing' || state.status === 'failed') {
       return res.json({ status: state.status, completed: Number(state.completed || 0),
-        total: 10, error: state.error || null });
+        total: 10, sourceMode: guided ? 'guided_stills' : 'video_frame_selection',
+        error: state.error || null });
     }
     const manifest = await manifestFor(vehicleId);
     if (manifest) return res.json({ status: 'ready', completed: 10, total: 10, ...manifest });
-    return res.json({ status: 'not_started', completed: 0, total: 10 });
+    return res.json({ status: 'not_started', completed: 0, total: 10,
+      sourceMode: guided ? 'guided_stills' : 'video_frame_selection' });
   } catch (error) {
     console.error('Studio photo status failed:', error);
     return res.status(500).json({ error: 'Az export állapota nem érhető el.' });

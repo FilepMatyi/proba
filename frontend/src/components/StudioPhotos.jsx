@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Download, LoaderCircle, Sparkles } from 'lucide-react';
-import { generateStudioPhotos, getStudioPhotos, studioPhotoUrl } from '../api/uploader';
+import { generateStudioPhotos, getGuidedStudio, getStudioPhotos,
+  processGuidedStudio, studioPhotoUrl } from '../api/uploader';
 
 export default function StudioPhotos() {
   const { vehicleId } = useParams();
@@ -26,7 +27,12 @@ export default function StudioPhotos() {
 
   const start = async () => {
     setError('');
-    try { setResult(await generateStudioPhotos(vehicleId)); }
+    try {
+      if (result.sourceMode === 'guided_stills') {
+        const guided = await getGuidedStudio(vehicleId);
+        setResult(await processGuidedStudio(vehicleId, guided.captureId));
+      } else setResult(await generateStudioPhotos(vehicleId));
+    }
     catch (requestError) { setError(requestError.message); }
   };
 
@@ -36,7 +42,8 @@ export default function StudioPhotos() {
         <button className="back-link" onClick={() => navigate('/dashboard')}><ArrowLeft size={16} /> Projektek</button>
         <p className="eyebrow">Önálló képexport</p>
         <h1>10 Studio Photos</h1>
-        <p>{vehicleId} · 10 körben elosztott, 3840 × 2160 képpontos stúdiófotó</p>
+        <p>{vehicleId} · 10 körben elosztott, 3840 × 2160 képpontos stúdiófotó
+          {result.sourceMode === 'guided_stills' ? ' · vezetett állóképekből' : ''}</p>
       </div>
       {result.status === 'ready' && <a className="button button-primary" href={studioPhotoUrl(vehicleId, 'album.zip', result.generatedAt)}>
         <Download size={18} /> Mind a 10 letöltése
@@ -46,7 +53,8 @@ export default function StudioPhotos() {
       <Sparkles size={27} />
       <div><h2>Különálló fotók az autóról</h2><p>A 36 nézetes interaktív bemutató mellett készülő, egyenként felhasználható, letisztult stúdióképek.</p></div>
     </section>
-    {result.status === 'ready' && result.photos?.some(photo => photo.angleSource !== 'sensor') &&
+    {result.status === 'ready' && result.sourceMode !== 'guided_stills'
+      && result.photos?.some(photo => photo.angleSource !== 'sensor') &&
       <p className="studio-export-note">Szenzoros irányadat nélkül a jelölt szögek közelítő értékek; a rendszer minden irányból a legjobb használható képet választja.</p>}
     {error && <p className="dashboard-alert">{error}</p>}
     {result.status === 'failed' && <p className="dashboard-alert">{result.error || 'Az export sikertelen volt. Újraindíthatod.'}</p>}
@@ -58,8 +66,10 @@ export default function StudioPhotos() {
     {result.status === 'ready' && <div className="studio-photo-grid">
       {(result.photos || Array.from({ length: 10 }, (_, index) => ({ number: index+1, file: `${String(index+1).padStart(2, '0')}.jpg`, degrees: index*36 }))).map(photo =>
         <article className="studio-photo-card" key={photo.number}>
-          <img src={studioPhotoUrl(vehicleId, photo.file, result.generatedAt)} alt={`${vehicleId} – ${photo.degrees} fokos stúdiófotó`} loading="lazy" />
-          <div><span>{String(photo.number).padStart(2, '0')} · {photo.angleSource === 'sensor' ? '' : '≈'}{photo.degrees}°</span>
+          <img src={studioPhotoUrl(vehicleId, photo.file, result.generatedAt)} alt={`${vehicleId} – ${photo.number}. stúdiófotó`} loading="lazy" />
+          <div><span>{result.sourceMode === 'guided_stills'
+            ? `${String(photo.number).padStart(2, '0')}. fotó · ${photo.sourceWidth} × ${photo.sourceHeight} forrás`
+            : `${String(photo.number).padStart(2, '0')} · ${photo.angleSource === 'sensor' ? '' : '≈'}${photo.degrees}°`}</span>
             <a href={studioPhotoUrl(vehicleId, photo.file, result.generatedAt)} download><Download size={16} /> Letöltés</a></div>
         </article>)}</div>}
   </main>;

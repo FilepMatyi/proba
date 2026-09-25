@@ -32,7 +32,7 @@ from processing.stabilization import (
     level_source_image,
 )
 from processing.studio_compose import create_studio_image
-from processing.studio_export import export_studio_photos
+from processing.studio_export import export_studio_photos, export_guided_studio_photos
 
 
 STREAM_NAME = 'photo-processing-stream'
@@ -559,6 +559,40 @@ def handle_studio_export(fields):
     redis_client.expire(state_key, 7*24*3600)
 
 
+def handle_guided_studio_export(fields):
+    vehicle_id = fields['vehicleId']
+    key = f'{vehicle_id}/guided-studio/session.json'
+    session = json.loads(_download_bytes(RAW_BUCKET, key))
+    if session.get('captureId') != fields.get('captureId') or session.get('sourceMode') != 'guided_stills':
+        raise ValueError('Guided capture session mismatch')
+    photos = session.get('photos') or []
+
+    def predict_mask(image):
+        from processing.background_removal import _session
+        return _session.predict(image)[0]
+
+    def save_object(object_key, data, content_type):
+        minio_client.put_object(PROCESSED_BUCKET, object_key, io.BytesIO(data), len(data),
+                                content_type=content_type)
+
+    def progress(number):
+        state_key = f'vehicle:{vehicle_id}:studio_photos'
+        redis_client.hset(state_key, mapping={'status': 'processing', 'completed': number})
+        redis_client.expire(state_key, 7*24*3600)
+
+    manifest = export_guided_studio_photos(
+        vehicle_id, photos, lambda source_key: _download_bytes(RAW_BUCKET, source_key),
+        predict_mask, save_object, progress)
+    session['status'] = 'ready'
+    session['generatedAt'] = manifest['generatedAt']
+    encoded = json.dumps(session, ensure_ascii=False).encode('utf-8')
+    minio_client.put_object(RAW_BUCKET, key, io.BytesIO(encoded), len(encoded),
+                            content_type='application/json')
+    state_key = f'vehicle:{vehicle_id}:studio_photos'
+    redis_client.hset(state_key, mapping={'status': 'ready', 'completed': manifest['count']})
+    redis_client.expire(state_key, 7*24*3600)
+
+
 def notify_backend_frame_processed(vehicle_id, photo_index):
     response = requests.patch(
         f'{BACKEND_URL}/internal/vehicles/{vehicle_id}/frame-processed',
@@ -613,6 +647,7 @@ def process_message(message_id, fields):
         'process-bg-removal': handle_bg_removal,
         'process-studio': handle_studio,
         'export-studio-photos': handle_studio_export,
+        'export-guided-studio-photos': handle_guided_studio_export,
     }
 
     handler = handlers.get(job_type)
@@ -634,7 +669,7 @@ def process_message(message_id, fields):
                 'originalMessageId': message_id,
                 'error': str(error)[:500],
             })
-            if job_type == 'export-studio-photos':
+            if job_type in ('export-studio-photos', 'export-guided-studio-photos'):
                 key = f"vehicle:{fields.get('vehicleId', '')}:studio_photos"
                 redis_client.hset(key, mapping={'status': 'failed', 'error': str(error)[:300]})
                 redis_client.expire(key, 7*24*3600)

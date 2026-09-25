@@ -2,8 +2,10 @@
 import io
 import json
 import math
+import tempfile
 import zipfile
 from datetime import datetime, timezone
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -180,11 +182,17 @@ def export_studio_photos(vehicle_id, read_mask, read_layout, save_object, progre
                                    if original_candidates else source_index)
             source = read_mask(source_viewer_index).convert('RGBA')
             detail_metadata = {'sourceDetail': 'stored-mask'}
+            source_dimensions = source.size
             if (original_candidates and read_candidate and predict_mask) or (read_source and predict_mask):
                 try:
                     original_bytes = (read_candidate(view['key']) if original_candidates
                                       else read_source(source_index))
                     if original_bytes:
+                        try:
+                            with Image.open(io.BytesIO(original_bytes)) as original_image:
+                                source_dimensions = original_image.size
+                        except (OSError, ValueError):
+                            pass
                         detailed, detail_metadata = segment_studio_source(
                             original_bytes, predict_mask)
                         if cutout_quality(detailed) is not None:
@@ -209,6 +217,8 @@ def export_studio_photos(vehicle_id, read_mask, read_layout, save_object, progre
             bundle.writestr(filename, data)
             components = view.get('components', {})
             entries.append({'number': number, 'sourceFrame': source_index,
+                            'sourceMode': 'video_frame_selection',
+                            'sourceWidth': source_dimensions[0], 'sourceHeight': source_dimensions[1],
                             'sourceViewerFrame': source_viewer_index,
                             'sourceCandidateKey': view.get('key'),
                             'degrees': round(view['targetAngle'], 1),
@@ -250,11 +260,120 @@ def export_studio_photos(vehicle_id, read_mask, read_layout, save_object, progre
             if progress:
                 progress(number)
     manifest = {'vehicleId': vehicle_id, 'kind': 'studio-photos',
+                'sourceMode': 'video_frame_selection',
                 'selectionMethod': selection_method,
                 'selectionDiagnostics': ('selection-debug.json' if original_candidates else
                                          selection_diagnostics),
                 'generatedAt': datetime.now(timezone.utc).isoformat(), 'count': len(entries),
                 'size': list(EXPORT_SIZE), 'photos': entries}
+    save_object(f'{vehicle_id}/studio-photos/album.zip', archive.getvalue(), 'application/zip')
+    save_object(f'{vehicle_id}/studio-photos/manifest.json',
+                json.dumps(manifest, ensure_ascii=False).encode('utf-8'), 'application/json')
+    return manifest
+
+
+def export_guided_studio_photos(vehicle_id, photos, read_original, predict_mask,
+                                save_object, progress=None):
+    """Ten original guided stills through the existing photo-only studio look.
+
+    Source order is the capture-sector order. No viewer mask or video selector is
+    involved. Temporary foregrounds keep large phone stills out of RAM while
+    allowing a gentle album-wide exposure target.
+    """
+    if len(photos) != EXPORT_COUNT or any(not item or not item.get('sourceKey') for item in photos):
+        raise ValueError('Ten guided originals are required')
+    measurements = []
+    entries = []
+    archive = io.BytesIO()
+    with tempfile.TemporaryDirectory(prefix='guided-studio-') as temporary:
+        paths = []
+        for number, metadata in enumerate(photos, 1):
+            original = read_original(metadata['sourceKey'])
+            foreground, detail = segment_studio_source(original, predict_mask)
+            if cutout_quality(foreground) is None:
+                raise ValueError(f'Unusable foreground at guided sector {number}')
+            path = Path(temporary) / f'{number:02d}.png'
+            foreground.save(path, 'PNG')
+            paths.append((path, metadata, detail))
+            measurements.append(measure_exposure(foreground))
+        valid = [value for value in measurements if value]
+        target_mean = float(np.median([value[0] for value in valid])) if valid else None
+        target_deviation = float(np.median([value[1] for value in valid])) if valid else None
+        with zipfile.ZipFile(archive, 'w', compression=zipfile.ZIP_STORED) as bundle:
+            for number, (path, metadata, detail) in enumerate(paths, 1):
+                with Image.open(path) as stored:
+                    foreground = stored.convert('RGBA')
+                stats = measurements[number-1]
+                if stats and target_mean is not None:
+                    foreground = apply_exposure_plan(foreground, {
+                        'sourceMean': stats[0],
+                        'meanShift': float(np.clip(target_mean-stats[0], -8., 8.)),
+                        'contrastGain': float(np.clip(target_deviation/max(stats[1], 1.), .95, 1.05)),
+                    })
+                studio, pose = create_studio_image(foreground, canvas_size=EXPORT_SIZE,
+                                                   style='photo', return_pose=True)
+                output = io.BytesIO()
+                studio.save(output, 'JPEG', quality=96, subsampling=0, optimize=True)
+                data = output.getvalue()
+                filename = f'{number:02d}.jpg'
+                save_object(f'{vehicle_id}/studio-photos/{filename}', data, 'image/jpeg')
+                bundle.writestr(filename, data)
+                entries.append({
+                    'number': number, 'file': filename, 'targetSector': number,
+                    'degrees': (number-1)*36, 'angleSource': 'guided_sector',
+                    'sourceMode': 'guided_stills', 'sourceFrame': number,
+                    'sourceCandidateKey': metadata['sourceKey'],
+                    'sourceWidth': metadata.get('sourceWidth'),
+                    'sourceHeight': metadata.get('sourceHeight'),
+                    'width': EXPORT_SIZE[0], 'height': EXPORT_SIZE[1],
+                    'captureMethod': metadata.get('captureMethod', 'stream_fallback'),
+                    'captureConfidence': metadata.get('captureConfidence', 'low'),
+                    'captureQuality': metadata.get('captureQuality'),
+                    'captureMetadata': {key: metadata.get(key) for key in (
+                        'timestamp', 'roll', 'pitch', 'deviceOrientationAvailable',
+                        'vehicleWidthRatio', 'vehicleHeightRatio', 'sharpnessScore',
+                        'exposureScore', 'stabilityScore', 'sectorDurationMs',
+                        'retryCount', 'instructionCounts')},
+                    'sourceDetail': 'original-frame-soft-matte',
+                    'detailPassUsed': detail.get('detailPassUsed', False),
+                    'stance': {
+                        'viewType': pose['viewType'] if pose else 'empty',
+                        'groundAnchorSource': pose['groundAnchorSource'] if pose else 'empty',
+                        'appliedRollDegrees': round(pose['appliedRollDegrees'], 3) if pose else 0.,
+                        'canvas': pose.get('canvas') if pose else None,
+                    },
+                })
+                if progress:
+                    progress(number)
+    def average(field):
+        values = [float(photo[field]) for photo in photos
+                  if isinstance(photo.get(field), (int, float)) and not isinstance(photo[field], bool)]
+        return round(float(np.mean(values)), 3) if values else None
+
+    instruction_counts = {}
+    for photo in photos:
+        for instruction, count in (photo.get('instructionCounts') or {}).items():
+            if isinstance(count, int) and not isinstance(count, bool) and count >= 0:
+                instruction_counts[instruction] = instruction_counts.get(instruction, 0) + count
+    diagnostics = {
+        'sourceMode': 'guided_stills',
+        'photoCount': len(entries),
+        'totalSectorDurationMs': sum(photo.get('sectorDurationMs') or 0 for photo in photos),
+        'totalRetries': sum(photo.get('retryCount') or 0 for photo in photos),
+        'averageAbsRollDegrees': round(float(np.mean([abs(photo['roll']) for photo in photos
+            if isinstance(photo.get('roll'), (int, float))])), 3)
+            if any(isinstance(photo.get('roll'), (int, float)) for photo in photos) else None,
+        'averageSharpnessScore': average('sharpnessScore'),
+        'averageStabilityScore': average('stabilityScore'),
+        'instructionCounts': instruction_counts,
+    }
+    save_object(f'{vehicle_id}/studio-photos/capture-diagnostics.json',
+                json.dumps(diagnostics, ensure_ascii=False).encode('utf-8'), 'application/json')
+    manifest = {'vehicleId': vehicle_id, 'kind': 'studio-photos',
+                'sourceMode': 'guided_stills', 'selectionMethod': 'guided_stills',
+                'generatedAt': datetime.now(timezone.utc).isoformat(),
+                'count': EXPORT_COUNT, 'size': list(EXPORT_SIZE), 'photos': entries,
+                'captureDiagnostics': 'capture-diagnostics.json'}
     save_object(f'{vehicle_id}/studio-photos/album.zip', archive.getvalue(), 'application/zip')
     save_object(f'{vehicle_id}/studio-photos/manifest.json',
                 json.dumps(manifest, ensure_ascii=False).encode('utf-8'), 'application/json')

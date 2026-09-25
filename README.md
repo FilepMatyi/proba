@@ -134,6 +134,10 @@ docker compose run --rm ai-worker python recompose.py jarmu-azonosito
 - `GET /viewer/:vehicleId` – interaktív 360° bemutató
 - `GET /api/vehicles/:vehicleId/studio-photos` – a különálló 10 képes export állapota és manifestje
 - `POST /api/vehicles/:vehicleId/studio-photos` – export indítása egy kész, 36 nézetes sessionből
+- `POST /api/vehicles/:vehicleId/guided-studio` – külön vezetett, 10 állóképes session indítása
+- `GET /api/vehicles/:vehicleId/guided-studio` – feltöltött eredetik és feldolgozási állapot
+- `PUT /api/vehicles/:vehicleId/guided-studio/photos/:index` – egy eredeti állókép és capture-metadata feltöltése/újrafotózása
+- `POST /api/vehicles/:vehicleId/guided-studio/process` – a tíz eredetiből Studio Photos export indítása
 - `GET /api/vehicles/:vehicleId/studio-photos/files/:filename` – egy JPEG vagy az `album.zip` letöltése
 - `GET /embed.js` – beágyazó kliens
 - `PATCH /internal/vehicles/:vehicleId/frame-processed` – tokennel védett worker callback
@@ -148,6 +152,50 @@ docker compose run --rm ai-worker python recompose.py jarmu-azonosito
 - automatikus frissítés, ha a viewer a feldolgozás befejezése előtt nyílik meg
 
 ## 10 Studio Photos
+
+### Guided Studio Capture (mobil MVP)
+
+A kezdőlapon külön **10 Studio Photos · vezetett fotózás** akció indítja a
+`/guided-studio/:vehicleId` útvonalat. Ez nem a 360 videófelvétel része. A
+kereskedő a teljes járművet az egyszerű kamerakeretbe helyezi, majd egyszer,
+folyamatosan körbesétálja; az alkalmazás széles, egymás utáni zónákban,
+rövid stabil időablak után automatikusan készít tíz állóképet. A normál
+felületen csak egy, prioritás szerinti instrukció és a 10 lépéses haladás
+látható, pontos fokokat nem kell eltalálni. A küszöbök toleránsak; a
+levágott jármű vagy erős elmosódás azonban nem válik elfogadhatóvá. A
+`?debug` kapcsoló külön fejlesztői adatokat mutat. A végén a tíz előnézet
+ellenőrizhető és egyenként újrafotózható.
+
+A böngésző által támogatott natív `ImageCapture.takePhoto()` az elsődleges
+forrás. Ha nincs vagy nem használható, a kamera stream aktuális képkockája
+kerül mentésre; a `captureMethod` mindkét esetben szerepel a metadata-ban.
+A könnyű, alacsony felbontású élőkép-elemzés nem BiRefNet, és jelenleg nincs
+valós idejű autódetektor: a keretben tartást a felhasználó végzi, ezért a
+framing guidance nem bizonyítja automatikusan a tetőcsomagtartó/tükör teljes
+láthatóságát. A kész állóképek böngészőbeli IndexedDB-tervezetben is megmaradnak
+feltöltésig; sikertelen hálózati feltöltés újrapróbálható.
+
+A tíz eredeti MinIO RAW objektum a
+`<vehicleId>/guided-studio/originals/01.jpg` … `10.jpg` prefixbe kerül,
+a session-adat a `<vehicleId>/guided-studio/session.json` fájlba. A külön
+worker job ugyanazt a Studio Photos BiRefNet/részlet/ground-contact/kompozíciós
+utat használja, amelyet a videós export, de közvetlenül a tíz eredeti
+állóképből dolgozik. A végleges 3840 × 2160 JPEG-ek, `album.zip`,
+`manifest.json` és `capture-diagnostics.json` a meglévő
+`<vehicleId>/studio-photos/` prefixbe kerülnek. A manifestben
+`sourceMode: guided_stills`, a régi videós ágnál
+`sourceMode: video_frame_selection` látható, és külön szerepel a valós
+forráskép- valamint a kimeneti vászonméret. A 4K vászon önmagában nem
+garantál 4K forrásrészletet.
+
+Telefonon a kamerához és az orientation engedélyhez **HTTPS secure origin**
+kell (a telefonon a PC `localhost` címe nem a PC-t jelenti). Mobilpróbához
+biztonságos HTTPS proxy/tunnel szükséges a frontend és API elérésével.
+Valódi készüléken ellenőrizendő a fő 1× kamera kiválasztása, a natív still
+API elérhetősége, a szenzorok viselkedése és a fényviszonyok közti
+automatikus felvétel; az asztali teszt ezeket nem igazolja.
+
+### Videóalapú, korábbi export
 
 A dashboard külön akciójából vagy a `/studio-photos/:vehicleId` oldalon indítható;
 nem helyettesíti a 36 képes viewert. Ha elérhető az eredeti capture frame-sorozat,
@@ -199,6 +247,7 @@ horpadásrészleteket.
 ```bash
 cd frontend
 npm run build
+npm test
 
 cd ../backend
 npm test
@@ -206,9 +255,15 @@ npm run check
 npx prisma validate
 
 cd ..
-python -m unittest discover -s ai-worker/tests -v
+docker compose exec -T ai-worker python -m unittest discover -s tests -v
 docker compose config
 ```
+
+Opcionális, tíz meglévő JPEG-forrást feltöltő és a valódi worker-útvonalat
+ellenőrző integrációs próba (külön `guided-smoke-*` sessiont hoz létre):
+`cd backend && node test/manualGuidedSmoke.mjs`. Ez nem helyettesíti a
+telefon kamerájának, szenzorainak és tényleges natív állókép-rögzítésének
+kipróbálását.
 
 ## Beágyazás
 

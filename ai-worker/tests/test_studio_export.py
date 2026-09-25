@@ -12,6 +12,7 @@ from PIL import Image, ImageDraw
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from processing.studio_export import (_match_stored_exposure, export_studio_photos,
+                                      export_guided_studio_photos,
                                       select_quality_views, select_studio_indices)
 from processing.studio_compose import create_studio_image, robust_ground_anchor, studio_placement
 from processing.studio_photo_look import cyclorama_template, floor_reflection, photo_shadow_layers
@@ -142,12 +143,44 @@ class StudioExportTests(unittest.TestCase):
         self.assertEqual(len([key for key in stored if key.endswith('.jpg')]), 10)
         self.assertTrue(all(key.startswith('car/studio-photos/') for key in stored))
         self.assertEqual(manifest['count'], 10)
+        self.assertEqual(manifest['sourceMode'], 'video_frame_selection')
         self.assertIn('generatedAt', manifest)
         self.assertEqual(len({item['sourceFrame'] for item in manifest['photos']}), 10)
         self.assertTrue(all(item['angleSource'] == 'ordered-frames' for item in manifest['photos']))
         with zipfile.ZipFile(io.BytesIO(stored['car/studio-photos/album.zip'])) as album:
             self.assertEqual(len(album.namelist()), 10)
         self.assertEqual(json.loads(stored['car/studio-photos/manifest.json'])['photos'][0]['sourceFrame'], 1)
+
+    def test_guided_stills_export_ten_originals_with_source_metadata(self):
+        stored = {}
+        source = Image.new('RGBA', (400, 225))
+        draw = ImageDraw.Draw(source)
+        draw.rectangle((20, 25, 380, 180), fill=(30, 90, 50, 255))
+        draw.ellipse((65, 150, 125, 215), fill=(20, 20, 20, 255))
+        draw.ellipse((270, 150, 330, 215), fill=(20, 20, 20, 255))
+        photos = [{'sourceKey': f'car/guided-studio/originals/{i:02d}.jpg',
+                   'sourceWidth': 4032, 'sourceHeight': 3024,
+                   'captureMethod': 'native_still', 'captureConfidence': 'high',
+                   'captureQuality': .9} for i in range(1, 11)]
+        with patch('processing.studio_export.EXPORT_SIZE', (400, 225)), \
+             patch('processing.studio_export.segment_studio_source',
+                   return_value=(source, {'detailPassUsed': True})) as segment:
+            manifest = export_guided_studio_photos(
+                'car', photos, lambda _: b'original', lambda _: None,
+                lambda key, data, _: stored.__setitem__(key, data))
+        self.assertEqual(segment.call_count, 10)
+        self.assertEqual(manifest['sourceMode'], 'guided_stills')
+        self.assertEqual(manifest['count'], 10)
+        self.assertEqual(manifest['photos'][0]['sourceWidth'], 4032)
+        self.assertEqual(manifest['photos'][0]['width'], 400)
+        self.assertEqual(manifest['photos'][0]['captureMethod'], 'native_still')
+        self.assertEqual(manifest['captureDiagnostics'], 'capture-diagnostics.json')
+        diagnostics = json.loads(stored['car/studio-photos/capture-diagnostics.json'])
+        self.assertEqual(diagnostics['photoCount'], 10)
+        self.assertEqual(diagnostics['sourceMode'], 'guided_stills')
+        self.assertEqual(len([key for key in stored if key.endswith('.jpg')]), 10)
+        with zipfile.ZipFile(io.BytesIO(stored['car/studio-photos/album.zip'])) as album:
+            self.assertEqual(len(album.namelist()), 10)
 
     def test_bad_source_mask_reports_failure_without_false_success(self):
         with self.assertRaisesRegex(ValueError, 'Not enough usable masks'):
