@@ -59,7 +59,18 @@ Elérhetőségek:
 - API és viewer: `http://localhost:3000`
 - MinIO Console: `http://localhost:9001`
 
-A kamera és a mozgásszenzorok telefonon HTTPS-kapcsolatot igényelnek. Helyi mobilteszthez használj HTTPS tunnelt, és állítsd be a `VITE_API_BASE_URL` értékét.
+A kamera és a mozgásszenzorok telefonon HTTPS-kapcsolatot igényelnek. A
+Dockerrel futó frontend már lefoglalja az 5173-as portot; ebben az esetben
+**ne** indíts mellé második `npm run dev -- --host` példányt. Telefonos
+teszthez a futó Docker mellett elég a `npx ngrok http 5173`, majd az ngrok
+által éppen kiírt HTTPS-cím gyökérútvonalát (`/`) kell megnyitni. Az API a
+Vite `/api` proxyján keresztül ugyanazon a címen érhető el, ezért ehhez a
+felálláshoz ne állíts `VITE_API_BASE_URL`-t telefonos `localhost:3000`-ra.
+Ha kifejezetten helyi Vite-ot szeretnél használni, előbb állítsd le csak a
+Docker frontend-szolgáltatást (`docker compose stop frontend`), majd indítsd
+a `frontend` mappában az `npm run dev -- --host` parancsot. A Vite most hibát
+jelez, ha az 5173-as port foglalt, és Docker alatt pollinggal követi a Windows
+bind mount fájlváltozásait.
 
 ## Konfiguráció
 

@@ -58,6 +58,7 @@ services:
     environment:
       VITE_API_BASE_URL: /api
       VITE_PROXY_TARGET: http://backend:3000
+      VITE_WATCH_POLLING: 'true'
     depends_on:
       - backend
     volumes:

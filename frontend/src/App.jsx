@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { BrowserRouter, Route, Routes, useNavigate } from 'react-router-dom';
-import { AlertTriangle, ArrowRight, Check, ChevronRight, Gauge, LayoutDashboard, Rotate3D, ShieldCheck, Sparkles } from 'lucide-react';
+import { AlertTriangle, ArrowRight, Camera, Check, ChevronRight, Gauge, LayoutDashboard, Rotate3D, ShieldCheck, Sparkles } from 'lucide-react';
 
 import CameraView from './components/CameraView';
 import Dashboard from './components/Dashboard';
